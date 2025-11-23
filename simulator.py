@@ -1,74 +1,53 @@
-clock_cycles = 0
-instruction_memory = []
-data_memory = []
-
-isa = {
-    'LW': 1,
-    'LD': 2,
-    'L.W': 3,
-    'L.D': 4,
-    'SW': 5,
-    'SD': 6,
-    'S.W': 7,
-    'S.D': 8,
-    
-    'ADD': 9,
-    'ADDI': 10,
-    'SUB': 11,
-    'SUBI': 12,
-    'MUL': 13,
-    'DIV': 14,
-    
-    'ADD.D': 15,
-    'ADD.S': 16,
-    'SUB.D': 17,
-    'SUB.S': 18,
-    'MUL.D': 19,
-    'MUL.S': 20,
-    'DIV.D': 21,
-    'DIV.S': 22,
-    
-    'J': 23,
-    'JR': 24,
-    'JAL': 25,
-    'BEQ': 26,
-    'BNE': 27,
-    
-    'NOP': 0
-}
-
-# ------------------------------------------------------------------- #
-
-# initialization functions
-
-def open_instruction_file(file_path):
-    with open(file_path, 'r') as file:
-        instructions = [line.strip() for line in file if line.strip()]
-    return instructions
-
-def decode_instruction(instruction):
-    parts = instruction.split()
-    opcode = parts[0]
-    operands = parts[1:] if len(parts) > 1 else []
-    return opcode, operands
-
-def load_instruction_memory(instructions):
-    global instruction_memory
-    instruction_memory = instructions[:]
+import sim_init
+import id
     
 # ------------------------------------------------------------------- #
 
 # logic functions
 
 def reset_simulator():
-    global clock_cycles, instruction_memory, data_memory
+    global clock_cycles, instruction_memory, data_memory, pc
+    pc = 0
     clock_cycles = 0
     instruction_memory = []
     data_memory = []
+    print("Simulator reset.")
+    
+def pipeline_stages():
+    print("Pipeline Stages:")
+    for stage, description in sim_init.stages.items():
+        print(f"{stage}: {description}")
 
 def increment_clock_cycles(cycles):
     global clock_cycles
     clock_cycles += cycles
+    print('-----------------------------------------')
+    print(f'Clock Cycle: {clock_cycles}')
+    
+def increment_pc(amount):
+    global pc
+    pc += amount
+    
+def cache_access(address):
+    print(f"Accessing cache for address: {address}")
+    block_number = address // sim_init.block_size
+    index = block_number % sim_init.cache_lines
+    tag = block_number // sim_init.cache_lines
+    offset = address % sim_init.block_size
+    
+    block = sim_init.cache[index]
+    if block['valid'] and block['tag'] == tag:
+        print("Cache hit")
+        return block['data'][offset], True
+    else:
+        print("Cache miss")
+        block_start_addr = block_number * sim_init.block_size
+        block_data = sim_init.data_memory[block_start_addr:block_start_addr + sim_init.block_size]
+        sim_init.cache[index]['tag'] = tag
+        sim_init.cache[index]['data'] = block_data
+        sim_init.cache[index]['valid'] = True
+        return block_data[offset], False
+    
     
 # ------------------------------------------------------------------- #
     
@@ -85,3 +64,13 @@ def print_data_memory():
 def print_clock_cycles():
     print(f"Total Clock Cycles: {clock_cycles}")
     
+# ------------------------------------------------------------------- #
+
+def main():
+    print('Enter example instruction')
+    instruction = input().strip()
+    opcode, operands, rs, rt, rd, immediate, address, name, val_rs, val_rt = id.decode_instruction(instruction)
+    print(f"Opcode: {opcode}, Operands: {operands}, RS: {rs}, RT: {rt}, RD: {rd}, Immediate: {immediate}, Address: {address}, Name: {name}")
+    
+if __name__ == "__main__":
+    main()
