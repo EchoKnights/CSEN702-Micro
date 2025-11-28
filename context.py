@@ -67,12 +67,12 @@ val_rt = 0
 
 general_registers = {}
 for i in range(32):
-    general_registers[f"R({i})"] = [0]
+    general_registers[f"R{i}"] = [0]
     
 floating_point_registers = {}
 for i in range(32):
-    floating_point_registers[f"F({i})"] = [0.0]
-    floating_point_registers[f"F({i})_Qi"] = ['0']
+    floating_point_registers[f"F{i}"] = [0.0]
+    floating_point_registers[f"F{i}_Qi"] = ['0']
     
 adder_reservation_stations = {}
 fp_adder_reservation_stations = {}
@@ -143,7 +143,6 @@ def initialize_reservation_stations(a=3, fa=3, m=2, fm=2, l=3, s=3):
         
     for i in range(fm):
         fp_mult_reservation_stations[f"FM{i+1}_time"] = [0]
-        fp_mult_reservation_stations[f"FM{i+1}"] = [0]
         fp_mult_reservation_stations[f"FM{i+1}_busy"] = [0]
         fp_mult_reservation_stations[f"FM{i+1}_op"] = [0.0]
         fp_mult_reservation_stations[f"FM{i+1}_Vj"] = [0.0]

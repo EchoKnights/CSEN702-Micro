@@ -269,6 +269,8 @@ def write_to_fp_reservation_station(opcode, rd, rs, rt):
     else:
         vk = '-'
         qk = pull_qi_from_register(rt)
+    if (pull_qi_from_register(rd) == '0'):
+        set_in_register(rd, 1, station_name)
 
     stations[busy_key][0] = 1
     stations[op_key][0] = opcode
@@ -279,14 +281,14 @@ def write_to_fp_reservation_station(opcode, rd, rs, rt):
         stations[vj_key][0] = vj
         stations[qj_key][0] = 0
     else:
-        stations[vj_key][0] = 0.0
+        stations[vj_key][0] = '-'
         stations[qj_key][0] = qj
 
     if qk == 0:
         stations[vk_key][0] = vk
         stations[qk_key][0] = 0
     else:
-        stations[vk_key][0] = 0.0
+        stations[vk_key][0] = '-'
         stations[qk_key][0] = qk
 
     print(f"Issued FP instruction to station {station_name}: {rd}, {rs}, {rt}")
