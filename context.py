@@ -1,83 +1,3 @@
-class RegistrationStation:
-    def __init__(self):
-        self.Tag = None
-        self.busy = False
-        self.busy_time = 0
-        self.opcode = ""
-    
-class LoadBuffer(RegistrationStation):
-    total_load_buffers = 2
-    busy_load_buffers = 0
-    
-    def __init__(self):
-        super().__init__()
-        self.address = 0
-        
-class StoreBuffer(RegistrationStation):
-    total_store_buffers = 3
-    busy_store_buffers = 0
-    
-    def __init__(self):
-        super().__init__()
-        self.address = 0
-        self.V = 0
-        self.Q = None
-        
-class AdditionBuffer(RegistrationStation):
-    total_addition_buffers = 3
-    busy_addition_buffers = 0
-    
-    def __init__(self):
-        super().__init__()
-        self.Vj = 0
-        self.Vk = 0
-        self.Qj = None
-        self.Qk = None
-        self.A = 0
-
-class MultiplicationBuffer(RegistrationStation):
-    total_multiplication_buffers = 2
-    busy_multiplication_buffers = 0
-    
-    def __init__(self):
-        super().__init__()
-        self.Vj = 0
-        self.Vk = 0
-        self.Qj = None
-        self.Qk = None
-        self.A = 0
-        
-class FPAdditionBuffer(RegistrationStation):
-    total_fp_addition_buffers = 3
-    busy_fp_addition_buffers = 0
-    
-    def __init__(self):
-        super().__init__()
-        self.Vj = 0.0
-        self.Vk = 0.0
-        self.Qj = None
-        self.Qk = None
-        self.A = 0.0
-        
-class FPMultiplicationBuffer(RegistrationStation):
-    total_fp_multiplication_buffers = 2
-    busy_fp_multiplication_buffers = 0
-    
-    def __init__(self):
-        super().__init__()
-        self.Vj = 0.0
-        self.Vk = 0.0
-        self.Qj = None
-        self.Qk = None
-        self.A = 0.0
-        
-class GeneralRegister:
-    total_general_registers = 32
-    
-    def __init__(self):
-        self.value = 0
-        self.Qi = None
-    
 isa = {
     'LW': 1,
     'LD': 2,
@@ -89,9 +9,9 @@ isa = {
     'S.D': 8,
     
     'ADD': 9,
-    'ADDI': 10,
+    'DADDI': 10,
     'SUB': 11,
-    'SUBI': 12,
+    'DSUBI': 12,
     'MUL': 13,
     'DIV': 14,
     
@@ -144,6 +64,25 @@ val_rt = 0
 
 # ------------------------------------------------------------------- #
 
+
+general_registers = {}
+for i in range(32):
+    general_registers[f"R({i})"] = [0]
+    
+floating_point_registers = {}
+for i in range(32):
+    floating_point_registers[f"F({i})"] = [0.0]
+    floating_point_registers[f"F({i})_Qi"] = ['0']
+    
+adder_reservation_stations = {}
+fp_adder_reservation_stations = {}
+mult_reservation_stations = {}
+fp_mult_reservation_stations = {}
+load_buffers = {}
+store_buffers = {}
+
+# ------------------------------------------------------------------- #
+
 # initialization functions
 
 def open_instruction_file(file_path):
@@ -167,6 +106,62 @@ def load_instruction_memory(instructions):
     global instruction_memory
     instruction_memory = instructions[:]
     
+def initialize_reservation_stations(a=3, fa=3, m=2, fm=2, l=3, s=3):
+    global adder_reservation_stations, fp_adder_reservation_stations
+    global mult_reservation_stations, fp_mult_reservation_stations
+    global load_buffers, store_buffers
+    
+    for i in range(a):
+        adder_reservation_stations[f"A{i+1}_time"] = [0]
+        adder_reservation_stations[f"A{i+1}"+"_busy"] = [0]
+        adder_reservation_stations[f"A{i+1}_op"] = [0]
+        adder_reservation_stations[f"A{i+1}"+"_Vj"] = [0]
+        adder_reservation_stations[f"A{i+1}"+"_Vk"] = [0]
+        adder_reservation_stations[f"A{i+1}"+"_Qj"] = [""]
+        adder_reservation_stations[f"A{i+1}"+"_Qk"] = [""]
+        adder_reservation_stations[f"A{i+1}"+"_A"] = [""]        
+        
+    for i in range(fa):
+        fp_adder_reservation_stations[f"FA{i+1}_time"] = [0]
+        fp_adder_reservation_stations[f"FA{i+1}_busy"] = [0]
+        fp_adder_reservation_stations[f"FA{i+1}_op"] = [0]
+        fp_adder_reservation_stations[f"FA{i+1}_Vj"] = [0.0]
+        fp_adder_reservation_stations[f"FA{i+1}_Vk"] = [0.0]
+        fp_adder_reservation_stations[f"FA{i+1}_Qj"] = [""]
+        fp_adder_reservation_stations[f"FA{i+1}_Qk"] = [""]
+        fp_adder_reservation_stations[f"FA{i+1}_A"] = [""]        
+        
+    for i in range(m):
+        mult_reservation_stations[f"M{i+1}_time"] = [0]
+        mult_reservation_stations[f"M{i+1}_busy"] = [0]
+        mult_reservation_stations[f"M{i+1}_op"] = [0]
+        mult_reservation_stations[f"M{i+1}_Vj"] = [0]
+        mult_reservation_stations[f"M{i+1}_Vk"] = [0]
+        mult_reservation_stations[f"M{i+1}_Qj"] = [""]
+        mult_reservation_stations[f"M{i+1}_Qk"] = [""]
+        mult_reservation_stations[f"M{i+1}_A"] = [""]        
+        
+    for i in range(fm):
+        fp_mult_reservation_stations[f"FM{i+1}_time"] = [0]
+        fp_mult_reservation_stations[f"FM{i+1}"] = [0]
+        fp_mult_reservation_stations[f"FM{i+1}_busy"] = [0]
+        fp_mult_reservation_stations[f"FM{i+1}_op"] = [0.0]
+        fp_mult_reservation_stations[f"FM{i+1}_Vj"] = [0.0]
+        fp_mult_reservation_stations[f"FM{i+1}_Vk"] = [0.0]
+        fp_mult_reservation_stations[f"FM{i+1}_Qj"] = [""]
+        fp_mult_reservation_stations[f"FM{i+1}_Qk"] = [""]
+        fp_mult_reservation_stations[f"FM{i+1}_A"] = [""]
+        
+    for i in range(l):
+        load_buffers[f"L{i+1}_busy"] = [0]
+        load_buffers[f"L{i+1}_address"] = [""]
+        
+    for i in range(s):
+        store_buffers[f"S{i+1}_busy"] = [0]
+        store_buffers[f"S{i+1}_address"] = [""]
+        store_buffers[f"S{i+1}_v"] = [0.0]
+        store_buffers[f"S{i+1}_Q"] = [""]
+    
 def initialize_simulator(instruction_file_path):
     instructions = open_instruction_file(instruction_file_path)
     load_instruction_memory(instructions)
@@ -174,6 +169,7 @@ def initialize_simulator(instruction_file_path):
     
     print("Simulator initialized.")
     
-def increment_pc(value):
-    global pc
-    pc += value
+def initialize_clock_cycle():
+    global clock_cycle
+    clock_cycle = 0
+        

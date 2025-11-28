@@ -1,40 +1,39 @@
 import context
-import simulator as sim_init
 
-def pull_next_instruction():
-    if context.pc < len(context.instruction_memory):
-        instruction = context.instruction_memory[context.pc]
-        context.increment_pc(1)
-        return instruction
-    else:
-        return None
-    
-def retrieve_value_from_register(register):
-    """Return the integer/float value stored in a general register.
 
-    Accepted formats: 'R0', 'r1', or numeric strings '0'. Returns 0 for
-    None/unparseable registers or when the register index is out of range.
-    """
+def pull_value_from_register(register):
     if not register:
         return 0
-    reg = str(register).replace(',', '').strip()
-    # support formats like R1 or 1
-    if reg == '':
+    register = register.strip()
+    if register.startswith('F'):
+        return context.floating_point_registers.setdefault(register, [0.0])[0]
+    return context.general_registers.setdefault(register, [0])[0]
+    
+def pull_qi_from_register(register):
+    if not register:
         return 0
-    if reg.upper().startswith('R'):
-        idx_part = reg[1:]
-    else:
-        idx_part = reg
-    try:
-        idx = int(idx_part)
-    except Exception:
-        return 0
-
-    regs = getattr(sim_init, 'GeneralRegisters', None)
-    if regs and 0 <= idx < len(regs):
-        return regs[idx].value
+    register = register.strip()
+    if register.startswith('F'):
+        return context.floating_point_registers.setdefault(register + "_Qi", [0])[0]
     return 0
+    
+def set_in_register(register, tag, value):
+    if not register:
+        return
+    register = register.strip()
 
+    if tag == 0:
+        if register.startswith('F'):
+            context.floating_point_registers.setdefault(register, [0.0])[0] = value
+        else:
+            context.general_registers.setdefault(register, [0])[0] = value
+    else:
+        if register.startswith('F'):
+            context.floating_point_registers.setdefault(register + "_Qi", [0])[0] = value
+        else:
+            return
+
+    
 def decode_instruction(instruction):
     rs = None
     rt = None
@@ -47,7 +46,7 @@ def decode_instruction(instruction):
     val_rt = 0
     
     parts = instruction.split()
-    opcode = sim_init.isa.get(parts[0], -1)
+    opcode = context.isa.get(parts[0], -1)
     operands = parts[1:] if len(parts) > 1 else []
 
     if (opcode == -1):
@@ -56,7 +55,7 @@ def decode_instruction(instruction):
     elif (opcode < 9):
         print(f"Decoding Load/Store instruction: {instruction}")
         if len(operands) >= 1:
-            rt = operands[0].strip(',')
+            rd = operands[0].strip(',')
         if len(operands) >= 2:
             offset_part = operands[1]
             if '(' in offset_part and ')' in offset_part:
@@ -68,8 +67,13 @@ def decode_instruction(instruction):
                 immediate = offset_part.strip()
                 address = immediate
                 
-        val_rs = retrieve_value_from_register(rs)
-        val_rt = retrieve_value_from_register(rt)
+        if (5 <= opcode):
+            temp = rs
+            rs = rd
+            rd = temp 
+            
+        val_rs = pull_value_from_register(rs)
+        val_rt = pull_value_from_register(rt)
         
     elif (9 <= opcode <= 14):
         print(f"Decoding Integer Arithmetic instruction: {instruction}")
@@ -82,7 +86,7 @@ def decode_instruction(instruction):
             if len(operands) >= 3:
                 immediate = operands[2].strip(',').strip('#')
             
-            val_rs = retrieve_value_from_register(rs)
+            val_rs = pull_value_from_register(rs)
             
         else:
             if len(operands) >= 1:
@@ -92,8 +96,8 @@ def decode_instruction(instruction):
             if len(operands) >= 3:
                 rt = operands[2].strip(',')
                 
-            val_rs = retrieve_value_from_register(rs)
-            val_rt = retrieve_value_from_register(rt)
+            val_rs = pull_value_from_register(rs)
+            val_rt = pull_value_from_register(rt)
         
             
     elif (15 <= opcode <= 22):
@@ -106,8 +110,8 @@ def decode_instruction(instruction):
         if len(operands) >= 3:
             rt = operands[2].strip(',')
             
-        val_rs = retrieve_value_from_register(rs)
-        val_rt = retrieve_value_from_register(rt)
+        val_rs = pull_value_from_register(rs)
+        val_rt = pull_value_from_register(rt)
             
     elif (23 <= opcode <= 27):
         print(f"Decoding Control instruction: {instruction}")
@@ -134,101 +138,155 @@ def decode_instruction(instruction):
             if len(operands) >= 3:
                 name = operands[2].strip(',')  
                 
-        val_rs = retrieve_value_from_register(rs)
-        val_rt = retrieve_value_from_register(rt)       
+        val_rs = pull_value_from_register(rs)
+        val_rt = pull_value_from_register(rt)       
     
-    payload = [opcode, operands, rs, rt, rd, immediate, address, name, val_rs, val_rt]
+    testpayload = [opcode, operands, rs, rt, rd, immediate, address, name, val_rs, val_rt]
+    payload = [opcode, rs, rt, rd, immediate, address]
     opcode = operands = rs = rt = rd = immediate = address = name = val_rs = val_rt = 0
     
     return payload
 
-def load_instruction_into_station(payload):
-    if(payload is None or len(payload) == 0 or payload[0] is None or payload[0] == -1 or payload[0] == 0):
-        return None
+def write_to_reservation_station(payload):
     opcode = payload[0]
-
-    # Integer arithmetic
-    if 9 <= opcode <= 14:
-        # MUL/DIV -> integer multiplication station; else addition station
-        if opcode in (13, 14):
-            stations = getattr(sim_init, 'MStation', [])
+    rs = payload[1]
+    rt = payload[2]
+    rd = payload[3]
+    immediate = payload[4]
+    address = payload[5]
+    
+    print(f"Writing to reservation station with payload: {payload}")
+    print({"opcode": opcode, "rs": rs, "rt": rt, "rd": rd, "immediate": immediate, "address": address})
+    
+    if opcode in range(0, 9):
+        print("Writing to Load/Store Buffer")
+        write_to_ls_st_buffer(opcode, rd, rs, immediate, address)
+    elif opcode in range(9, 15):
+        print("Writing to Integer Arithmetic Reservation Station")
+    elif opcode in range(15, 23):
+        print("Writing to Floating-Point Arithmetic Reservation Station")
+        write_to_fp_reservation_station(opcode, rd, rs, rt)
+    elif opcode in range(23, 28):
+        print("Writing to Control Reservation Station")
+    else:
+        print("Unknown opcode; cannot write to reservation station")
+        
+def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
+    buffer_name = None
+    flag = ""
+    
+    if (1 <= opcode <= 4):  # L
+        i = 1
+        flag = "L"
+        while f"L{i}_busy" in context.load_buffers:
+            if context.load_buffers[f"L{i}_busy"][0] == 0:
+                buffer_name = f"L{i}"
+                break
+            i += 1
+    elif (5 <= opcode <= 8):  # S
+        i = 1
+        flag = "S"
+        while f"S{i}_busy" in context.store_buffers:
+            if context.store_buffers[f"S{i}_busy"][0] == 0:
+                buffer_name = f"S{i}"
+                break
+            i += 1
+            
+    if buffer_name is None:
+        print("No free Load/Store buffer available")
+        return None
+    
+    busy_key = f"{buffer_name}_busy"
+    address_key = f"{buffer_name}_address"
+    v_key = ""
+    q_key = ""
+    if flag == "S":
+        v_key = f"{buffer_name}_v"
+        q_key = f"{buffer_name}_Q"
+    
+    if flag == "L":
+        context.load_buffers[busy_key][0] = 1
+        context.load_buffers[address_key][0] = address
+        set_in_register(rd, 1, buffer_name)
+        print(f"Issued Load instruction to buffer {buffer_name}: {rd}, {rs}, {immediate}")
+    elif flag == "S":
+        context.store_buffers[busy_key][0] = 1
+        context.store_buffers[address_key][0] = address
+        val_rt = pull_value_from_register(rs)
+        qi_rt = pull_qi_from_register(rs)
+        if qi_rt == '0':
+            context.store_buffers[v_key][0] = val_rt
+            context.store_buffers[q_key][0] = 0
         else:
-            stations = getattr(sim_init, 'AStation', [])
+            context.store_buffers[v_key][0] = '-'
+            context.store_buffers[q_key][0] = qi_rt
+        print(f"Issued Store instruction to buffer {buffer_name}: {rd}, {rs}, {immediate}")
+        
 
-        for s in stations:
-            if not s.busy:
-                s.busy = True
-                s.Tag = context.tag
-                context.tag += 1
-                s.opcode = opcode
-                # value fields (may be 0)
-                try:
-                    s.Vj = payload[8]
-                    s.Vk = payload[9]
-                except Exception:
-                    pass
-                return s
+def write_to_fp_reservation_station(opcode, rd, rs, rt):
+    
+    if opcode in range(15, 19):   # ADD.D, ADD.S, SUB.D, SUB.S
+        stations = context.fp_adder_reservation_stations
+        prefix = "FA"
+    elif opcode in range(19, 23): # MUL.D, MUL.S, DIV.D, DIV.S
+        stations = context.fp_mult_reservation_stations
+        prefix = "FM"
+    else:
+        return None
+    
+    station_name = None
+    i = 1
+    while f"{prefix}{i}_busy" in stations:
+        if stations[f"{prefix}{i}_busy"][0] == 0:
+            station_name = f"{prefix}{i}"
+            break
+        i += 1
+
+    if station_name is None:
+        print("No free FP reservation station available")
         return None
 
-    # Floating point arithmetic
-    if 15 <= opcode <= 22:
-        # choose FP multiply station for FP mul/div, else FP add
-        if opcode in (19, 20, 21, 22):
-            stations = getattr(sim_init, 'FPMStation', [])
-        else:
-            stations = getattr(sim_init, 'FPAStation', [])
+    busy_key = f"{station_name}_busy"
+    op_key   = f"{station_name}_op"
+    vj_key   = f"{station_name}_Vj"
+    vk_key   = f"{station_name}_Vk"
+    qj_key   = f"{station_name}_Qj"
+    qk_key   = f"{station_name}_Qk"
+    time_key = f"{station_name}_time"
+    a_key    = f"{station_name}_A"
 
-        for s in stations:
-            if not s.busy:
-                s.busy = True
-                s.Tag = context.tag
-                context.tag += 1
-                s.opcode = opcode
-                try:
-                    s.Vj = float(payload[8])
-                    s.Vk = float(payload[9])
-                except Exception:
-                    # keep defaults if conversion fails
-                    pass
-                return s
-        return None
 
-    # Load / Store
-    if opcode < 9:
-        # Loads
-        if opcode in (1, 2, 3, 4):
-            stations = getattr(sim_init, 'LStation', [])
-            for s in stations:
-                if not s.busy:
-                    s.busy = True
-                    s.Tag = context.tag
-                    context.tag += 1
-                    s.opcode = opcode
-                    # store address (payload[6])
-                    try:
-                        s.address = payload[6]
-                    except Exception:
-                        pass
-                    return s
-            return None
+    if (pull_qi_from_register(rs) == '0'):
+        vj = pull_value_from_register(rs)
+        qj = 0
+    else:
+        vj = '-'
+        qj = pull_qi_from_register(rs)
 
-        # Stores
-        if opcode in (5, 6, 7, 8):
-            stations = getattr(sim_init, 'SStation', [])
-            for s in stations:
-                if not s.busy:
-                    s.busy = True
-                    s.Tag = context.tag
-                    context.tag += 1
-                    s.opcode = opcode
-                    try:
-                        s.address = payload[6]
-                        s.V = payload[9]
-                        s.Q = None
-                    except Exception:
-                        pass
-                    return s
-            return None
+    if (pull_qi_from_register(rt) == '0'):
+        vk = pull_value_from_register(rt)
+        qk = 0
+    else:
+        vk = '-'
+        qk = pull_qi_from_register(rt)
 
-    # Control / other instructions: not handled by reservation stations here
-    return None
+    stations[busy_key][0] = 1
+    stations[op_key][0] = opcode
+    stations[time_key][0] = 0
+    stations[a_key][0] = ""
+
+    if qj == 0:
+        stations[vj_key][0] = vj
+        stations[qj_key][0] = 0
+    else:
+        stations[vj_key][0] = 0.0
+        stations[qj_key][0] = qj
+
+    if qk == 0:
+        stations[vk_key][0] = vk
+        stations[qk_key][0] = 0
+    else:
+        stations[vk_key][0] = 0.0
+        stations[qk_key][0] = qk
+
+    print(f"Issued FP instruction to station {station_name}: {rd}, {rs}, {rt}")
