@@ -1,26 +1,31 @@
 import context
-
-A1 = context.AdditionBuffer()
-A2 = context.AdditionBuffer()
-A3 = context.AdditionBuffer()
-FA1 = context.FPAdditionBuffer()
-FA2 = context.FPAdditionBuffer()
-FA3 = context.FPAdditionBuffer()
-FM1 = context.FPMultiplicationBuffer()
-FM2 = context.FPMultiplicationBuffer()
-M1 = context.MultiplicationBuffer()
-M2 = context.MultiplicationBuffer()
-L1 = context.LoadBuffer()
-L2 = context.LoadBuffer()
-S1 = context.StoreBuffer()
-S2 = context.StoreBuffer()
-S3 = context.StoreBuffer()
+import fetch
 
 
-FPAStation = [FA1, FA2, FA3]
-FPMStation = [FM1, FM2]
-AStation = [A1, A2, A3]
-MStation = [M1, M2]
-LStation = [L1, L2]
-SStation = [S1, S2, S3]
-GeneralRegisters = [context.GeneralRegister() for _ in range(context.GeneralRegister.total_general_registers)]
+
+fetch.set_in_register('R1', 0, 10)
+fetch.set_in_register('R2', 0, 20)
+fetch.set_in_register('R10', 0, 77)
+
+fetch.set_in_register('F1', 0, 5.5)
+fetch.set_in_register('F2', 0, 2.0)
+fetch.set_in_register('F3', 1, "A3")
+context.initialize_reservation_stations()
+
+print("Enter example instruction:")
+example_instruction = input().strip()
+
+print(f"Decoding instruction: {example_instruction}")
+decoded = fetch.decode_instruction(example_instruction)
+station = fetch.write_to_reservation_station(decoded)
+print('\n')
+print(f"State of Load buffers: {context.load_buffers}")
+print('\n')
+print(f"State of Store buffers: {context.store_buffers}")
+print('\n')
+print(f"State of reservation stations: {context.fp_adder_reservation_stations}")
+print('\n')
+print(f"State of floating registers: {context.floating_point_registers}")
+print('\n')
+print(f"State of registers: {context.general_registers}")
+print('\n')
