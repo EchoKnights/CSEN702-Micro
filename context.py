@@ -35,7 +35,7 @@ isa = {
 
 
 pc = 0
-clock_cycle = 1
+clock_cycle = 0
 single_word_size = 4
 double_word_size = 8
 cache_size = 16
@@ -68,7 +68,10 @@ name = ""
 val_rs = 0
 val_rt = 0
 
-CDB = {}
+CDB = {
+    "tag": None,
+    "value": None,
+}
 
 # ------------------------------------------------------------------- #
 
@@ -116,7 +119,8 @@ def initialize_data_memory(size=None):
 
 def load_instruction_memory(instructions):
     global instruction_memory
-    instruction_memory = instructions[:]
+
+    instruction_memory = instructions
     
 def initialize_reservation_stations(g = 32, f= 32, a=3, fa=3, m=2, fm=2, l=3, s=3):
     global adder_reservation_stations, fp_adder_reservation_stations
@@ -184,6 +188,7 @@ def initialize_reservation_stations(g = 32, f= 32, a=3, fa=3, m=2, fm=2, l=3, s=
         name = f"L{i+1}"
         
         load_buffers[name] = {
+            'time': 0,
             "busy": 0,
             "address": "",
         }
@@ -192,58 +197,32 @@ def initialize_reservation_stations(g = 32, f= 32, a=3, fa=3, m=2, fm=2, l=3, s=
         name = f"S{i+1}"
         
         store_buffers[name] = {
+            'time': 0,
             "busy": 0,
             "address": "",
             "V": 0.0,
             "Q": "0",
         }
         
-def write_to_CDB(payload):
-    global CDB
-    CDB = {}
-    CDB = payload
-    print(f"Written to CDB: {CDB}")
-        
-def listen_to_CDB():
-    global CDB
-    if not CDB:
-        return
-    
-    tag = CDB[0]
-    value = CDB[1]
-    
-    if tag is None or value is None:
-        return
-    
-    for station in fp_adder_reservation_stations.values():
-        if station["Qj"] == tag:
-            station["Vj"] = value
-            station["Qj"] = "0"
-        if station["Qk"] == tag:
-            station["Vk"] = value
-            station["Qk"] = "0"
-    
-    for station in fp_mult_reservation_stations.values():
-        if station["Qj"] == tag:
-            station["Vj"] = value
-            station["Qj"] = "0"
-        if station["Qk"] == tag:
-            station["Vk"] = value
-            station["Qk"] = "0"
-    
-    for reg in floating_point_registers.values():
-        if reg["Qi"] == tag:
-            reg["Value"] = value
-            reg["Qi"] = "0"
-        
 def initialize_clock_cycle():
     global clock_cycle
-    clock_cycle = 1
+    clock_cycle = 0
+    
+def initialize_program_counter():
+    global pc
+    pc = 0
+    
+def increment_pc(offset):
+    global pc
+    pc += offset
     
 def initialize_simulator(instruction_file_path):
     instructions = open_instruction_file(instruction_file_path)
     load_instruction_memory(instructions)
     initialize_data_memory()
+    initialize_clock_cycle()
+    initialize_program_counter()
+    initialize_reservation_stations()
     
     print("Simulator initialized.")
 
