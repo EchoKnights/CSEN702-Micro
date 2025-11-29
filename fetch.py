@@ -1,20 +1,29 @@
 import context
 
 
+def test_get_next_instruction():
+    print('\n')
+    print('Enter Next Instruction:')
+    print('-----------------------')
+    instruction = input().strip()
+    if instruction == "":
+        instruction = "0"
+    return instruction
+
 def pull_value_from_register(register):
     if not register:
         return 0
     register = register.strip()
     if register.startswith('F'):
-        return context.floating_point_registers.setdefault(register, [0.0])[0]
-    return context.general_registers.setdefault(register, [0])[0]
+        return context.floating_point_registers[register]["Value"]
+    return context.general_registers[register][0]
     
 def pull_qi_from_register(register):
     if not register:
         return 0
     register = register.strip()
     if register.startswith('F'):
-        return context.floating_point_registers.setdefault(register + "_Qi", [0])[0]
+        return context.floating_point_registers[register]["Qi"]
     return 0
     
 def set_in_register(register, tag, value):
@@ -24,12 +33,12 @@ def set_in_register(register, tag, value):
 
     if tag == 0:
         if register.startswith('F'):
-            context.floating_point_registers.setdefault(register, [0.0])[0] = value
+            context.floating_point_registers[register]["Value"] = value
         else:
-            context.general_registers.setdefault(register, [0])[0] = value
+            context.general_registers[register][0] = value
     else:
         if register.startswith('F'):
-            context.floating_point_registers.setdefault(register + "_Qi", [0])[0] = value
+            context.floating_point_registers[register]["Qi"] = value
         else:
             return
 
@@ -178,16 +187,16 @@ def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
     if (1 <= opcode <= 4):  # L
         i = 1
         flag = "L"
-        while f"L{i}_busy" in context.load_buffers:
-            if context.load_buffers[f"L{i}_busy"][0] == 0:
+        while f"L{i}" in context.load_buffers:
+            if context.load_buffers[f"L{i}"]["busy"] == 0:
                 buffer_name = f"L{i}"
                 break
             i += 1
     elif (5 <= opcode <= 8):  # S
         i = 1
         flag = "S"
-        while f"S{i}_busy" in context.store_buffers:
-            if context.store_buffers[f"S{i}_busy"][0] == 0:
+        while f"S{i}" in context.store_buffers:
+            if context.store_buffers[f"S{i}"]["busy"] == 0:
                 buffer_name = f"S{i}"
                 break
             i += 1
@@ -196,30 +205,24 @@ def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
         print("No free Load/Store buffer available")
         return None
     
-    busy_key = f"{buffer_name}_busy"
-    address_key = f"{buffer_name}_address"
-    v_key = ""
-    q_key = ""
-    if flag == "S":
-        v_key = f"{buffer_name}_v"
-        q_key = f"{buffer_name}_Q"
-    
     if flag == "L":
-        context.load_buffers[busy_key][0] = 1
-        context.load_buffers[address_key][0] = address
+        context.load_buffers[buffer_name]["time"] = context.load_latency
+        context.load_buffers[buffer_name]["busy"] = 1
+        context.load_buffers[buffer_name]["address"] = address
         set_in_register(rd, 1, buffer_name)
         print(f"Issued Load instruction to buffer {buffer_name}: {rd}, {rs}, {immediate}")
     elif flag == "S":
-        context.store_buffers[busy_key][0] = 1
-        context.store_buffers[address_key][0] = address
+        context.store_buffers[buffer_name]["time"] = context.store_latency
+        context.store_buffers[buffer_name]["busy"] = 1
+        context.store_buffers[buffer_name]["address"] = address
         val_rt = pull_value_from_register(rs)
         qi_rt = pull_qi_from_register(rs)
         if qi_rt == '0':
-            context.store_buffers[v_key][0] = val_rt
-            context.store_buffers[q_key][0] = 0
+            context.store_buffers[buffer_name]["V"] = val_rt
+            context.store_buffers[buffer_name]["Q"] = 0
         else:
-            context.store_buffers[v_key][0] = '-'
-            context.store_buffers[q_key][0] = qi_rt
+            context.store_buffers[buffer_name]["V"] = '-'
+            context.store_buffers[buffer_name]["Q"] = qi_rt
         print(f"Issued Store instruction to buffer {buffer_name}: {rd}, {rs}, {immediate}")
         
 
@@ -236,8 +239,8 @@ def write_to_fp_reservation_station(opcode, rd, rs, rt):
     
     station_name = None
     i = 1
-    while f"{prefix}{i}_busy" in stations:
-        if stations[f"{prefix}{i}_busy"][0] == 0:
+    while f"{prefix}{i}" in stations:
+        if stations[f"{prefix}{i}"]["busy"] == 0:
             station_name = f"{prefix}{i}"
             break
         i += 1
@@ -245,16 +248,6 @@ def write_to_fp_reservation_station(opcode, rd, rs, rt):
     if station_name is None:
         print("No free FP reservation station available")
         return None
-
-    busy_key = f"{station_name}_busy"
-    op_key   = f"{station_name}_op"
-    vj_key   = f"{station_name}_Vj"
-    vk_key   = f"{station_name}_Vk"
-    qj_key   = f"{station_name}_Qj"
-    qk_key   = f"{station_name}_Qk"
-    time_key = f"{station_name}_time"
-    a_key    = f"{station_name}_A"
-
 
     if (pull_qi_from_register(rs) == '0'):
         vj = pull_value_from_register(rs)
@@ -269,26 +262,31 @@ def write_to_fp_reservation_station(opcode, rd, rs, rt):
     else:
         vk = '-'
         qk = pull_qi_from_register(rt)
-    if (pull_qi_from_register(rd) == '0'):
+    if (rd is not None):
         set_in_register(rd, 1, station_name)
+    
 
-    stations[busy_key][0] = 1
-    stations[op_key][0] = opcode
-    stations[time_key][0] = 0
-    stations[a_key][0] = ""
+    if (opcode in (15, 16, 17, 18)):  # ADD.D, ADD.S, SUB.D, SUB.S
+        stations[station_name]["time"] = context.fp_add_latency
+    elif (opcode in (19, 20, 21, 22)):  # MUL.D, MUL.S, DIV.D, DIV.S
+        stations[station_name]["time"] = context.fp_mult_latency
+    
+    stations[station_name]["busy"] = 1
+    stations[station_name]["op"] = opcode
+    stations[station_name]["A"] = ""
 
     if qj == 0:
-        stations[vj_key][0] = vj
-        stations[qj_key][0] = 0
+        stations[station_name]["Vj"] = vj
+        stations[station_name]["Qj"] = 0
     else:
-        stations[vj_key][0] = '-'
-        stations[qj_key][0] = qj
+        stations[station_name]["Vj"] = '-'
+        stations[station_name]["Qj"] = qj
 
     if qk == 0:
-        stations[vk_key][0] = vk
-        stations[qk_key][0] = 0
+        stations[station_name]["Vk"] = vk
+        stations[station_name]["Qk"] = 0
     else:
-        stations[vk_key][0] = '-'
-        stations[qk_key][0] = qk
+        stations[station_name]["Vk"] = '-'
+        stations[station_name]["Qk"] = qk
 
     print(f"Issued FP instruction to station {station_name}: {rd}, {rs}, {rt}")

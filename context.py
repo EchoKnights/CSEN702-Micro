@@ -35,7 +35,7 @@ isa = {
 
 
 pc = 0
-clock_cycle = 0
+clock_cycle = 1
 single_word_size = 4
 double_word_size = 8
 cache_size = 16
@@ -43,6 +43,12 @@ block_size = 4
 cache_lines = cache_size // block_size
 cache_hit_latency = 1
 cache_miss_penalty = 10
+
+fp_add_latency = 2
+fp_mult_latency = 6
+load_latency = 2
+store_latency = 2
+add_latency = 1
 
 instruction_memory = []
 data_memory = []
@@ -64,16 +70,20 @@ val_rt = 0
 
 # ------------------------------------------------------------------- #
 
+g, f = 32, 32
 
-general_registers = {}
-for i in range(32):
-    general_registers[f"R{i}"] = [0]
-    
+general_registers = {}    
 floating_point_registers = {}
-for i in range(32):
-    floating_point_registers[f"F{i}"] = [0.0]
-    floating_point_registers[f"F{i}_Qi"] = ['0']
-    
+
+for i in range(g):
+    general_registers[f"R{i}"] = [0]
+
+for i in range(f):
+    floating_point_registers[f"F{i}"] = {
+        "Value": 0.0,
+        "Qi": "0",
+}
+
 adder_reservation_stations = {}
 fp_adder_reservation_stations = {}
 mult_reservation_stations = {}
@@ -106,60 +116,85 @@ def load_instruction_memory(instructions):
     global instruction_memory
     instruction_memory = instructions[:]
     
-def initialize_reservation_stations(a=3, fa=3, m=2, fm=2, l=3, s=3):
+def initialize_reservation_stations(g = 32, f= 32, a=3, fa=3, m=2, fm=2, l=3, s=3):
     global adder_reservation_stations, fp_adder_reservation_stations
     global mult_reservation_stations, fp_mult_reservation_stations
     global load_buffers, store_buffers
+    global floating_point_registers, general_registers
     
     for i in range(a):
-        adder_reservation_stations[f"A{i+1}_time"] = [0]
-        adder_reservation_stations[f"A{i+1}"+"_busy"] = [0]
-        adder_reservation_stations[f"A{i+1}_op"] = [0]
-        adder_reservation_stations[f"A{i+1}"+"_Vj"] = [0]
-        adder_reservation_stations[f"A{i+1}"+"_Vk"] = [0]
-        adder_reservation_stations[f"A{i+1}"+"_Qj"] = [""]
-        adder_reservation_stations[f"A{i+1}"+"_Qk"] = [""]
-        adder_reservation_stations[f"A{i+1}"+"_A"] = [""]        
+        name = f"A{i+1}"
+
+        adder_reservation_stations[name] = {
+            "time": 0,
+            "busy": 0,
+            "op": None,
+            "Vj": 0.0,
+            "Vk": 0.0,
+            "Qj": "0",
+            "Qk": "0",
+            "A":  "",
+        }  
         
     for i in range(fa):
-        fp_adder_reservation_stations[f"FA{i+1}_time"] = [0]
-        fp_adder_reservation_stations[f"FA{i+1}_busy"] = [0]
-        fp_adder_reservation_stations[f"FA{i+1}_op"] = [0]
-        fp_adder_reservation_stations[f"FA{i+1}_Vj"] = [0.0]
-        fp_adder_reservation_stations[f"FA{i+1}_Vk"] = [0.0]
-        fp_adder_reservation_stations[f"FA{i+1}_Qj"] = [""]
-        fp_adder_reservation_stations[f"FA{i+1}_Qk"] = [""]
-        fp_adder_reservation_stations[f"FA{i+1}_A"] = [""]        
+        name = f"FA{i+1}"
+
+        fp_adder_reservation_stations[name] = {
+            "time": 0,
+            "busy": 0,
+            "op": None,
+            "Vj": 0.0,
+            "Vk": 0.0,
+            "Qj": "0",
+            "Qk": "0",
+            "A":  "",
+        }
         
     for i in range(m):
-        mult_reservation_stations[f"M{i+1}_time"] = [0]
-        mult_reservation_stations[f"M{i+1}_busy"] = [0]
-        mult_reservation_stations[f"M{i+1}_op"] = [0]
-        mult_reservation_stations[f"M{i+1}_Vj"] = [0]
-        mult_reservation_stations[f"M{i+1}_Vk"] = [0]
-        mult_reservation_stations[f"M{i+1}_Qj"] = [""]
-        mult_reservation_stations[f"M{i+1}_Qk"] = [""]
-        mult_reservation_stations[f"M{i+1}_A"] = [""]        
+        name = f"M{i+1}"
+
+        mult_reservation_stations[name] = {
+            "time": 0,
+            "busy": 0,
+            "op": None,
+            "Vj": 0,
+            "Vk": 0,
+            "Qj": "0",
+            "Qk": "0",
+            "A":  "",        
+        }
         
     for i in range(fm):
-        fp_mult_reservation_stations[f"FM{i+1}_time"] = [0]
-        fp_mult_reservation_stations[f"FM{i+1}_busy"] = [0]
-        fp_mult_reservation_stations[f"FM{i+1}_op"] = [0.0]
-        fp_mult_reservation_stations[f"FM{i+1}_Vj"] = [0.0]
-        fp_mult_reservation_stations[f"FM{i+1}_Vk"] = [0.0]
-        fp_mult_reservation_stations[f"FM{i+1}_Qj"] = [""]
-        fp_mult_reservation_stations[f"FM{i+1}_Qk"] = [""]
-        fp_mult_reservation_stations[f"FM{i+1}_A"] = [""]
+        name = f"FM{i+1}"
+
+        fp_mult_reservation_stations[name] = {
+            "time": 0,
+            "busy": 0,
+            "op": None,
+            "Vj": 0.0,
+            "Vk": 0.0,
+            "Qj": "0",
+            "Qk": "0",
+            "A":  "",
+        }
         
     for i in range(l):
-        load_buffers[f"L{i+1}_busy"] = [0]
-        load_buffers[f"L{i+1}_address"] = [""]
+        name = f"L{i+1}"
+        
+        load_buffers[name] = {
+            "busy": 0,
+            "address": "",
+        }
         
     for i in range(s):
-        store_buffers[f"S{i+1}_busy"] = [0]
-        store_buffers[f"S{i+1}_address"] = [""]
-        store_buffers[f"S{i+1}_v"] = [0.0]
-        store_buffers[f"S{i+1}_Q"] = [""]
+        name = f"S{i+1}"
+        
+        store_buffers[name] = {
+            "busy": 0,
+            "address": "",
+            "V": 0.0,
+            "Q": "0",
+        }
     
 def initialize_simulator(instruction_file_path):
     instructions = open_instruction_file(instruction_file_path)
