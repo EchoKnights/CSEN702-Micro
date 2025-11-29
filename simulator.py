@@ -48,12 +48,3 @@ def fetch_cycle():
     
 def execute_cycle():
     execute.execute_cycle()
-    
-while(True):
-    fetch_cycle()
-    print_state()
-    
-    increment_cycle()
-    execute_cycle()
-    print_state()
-    

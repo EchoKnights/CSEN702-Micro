@@ -19,7 +19,13 @@ def iter_all_units():
         yield name, st
 
 
-def check_if_ready(station):
+def check_if_ready(name, station):
+    if name.startswith('L') or name.startswith('S'):  # Load/Store
+        if name.startswith('L'):  # Load
+            return True
+        else:  # Store
+            return check_if_store_ready(station)
+    
     qj = str(station.get('Qj', ''))
     qk = str(station.get('Qk', ''))
     
@@ -44,34 +50,33 @@ def check_if_store_ready(station):
         return True
     return False
 
-def check_if_load_ready(station):
-    address = str(station.get('address', ''))
-
-    def _is_numeric(s):
-        return s.isdigit() or (s.startswith('-') and s[1:].isdigit())
-
-    if _is_numeric(address):
-        return True
-    return False
-
 def execute_cycle():
     ready_to_execute = []
+    waiting_on_value = []
 
     for name, station in iter_all_units():
         if station.get("busy", 0) == 1 and station.get("time", 0) > 0:
-            station["time"] -= 1
-            if station["time"] == 0:
-                ready_to_execute.append((name, station))
-
+            if check_if_ready(name, station) == True:
+                station["time"] -= 1
+                if station["time"] == 0:
+                    ready_to_execute.append((name, station))
+            else:
+                waiting_on_value.append((name, station))
+                
     for name, station in ready_to_execute:
         print('TEST:"', ready_to_execute)
-        execute_instruction(name, station)
+        payload = [f"{name}", execute_instruction(name, station)]
+        context.write_to_CDB(payload)
+        
+    for name, station in waiting_on_value:
+        print(f"Waiting on value: {name}, Station: {station}")
+        context.listen_to_CDB()
+        if check_if_ready(name, station) == True:
+            waiting_on_value.remove((name, station))
 
             
 def execute_instruction(name, station):
     if name[0] == 'F':
-        if not check_if_ready(station):
-            return None
         if (name[1] == 'A') or (name[1] == 'M'):
             res_1 = station['Qj'] if station['Qj'] != 0 else station['Vj']
             res_2 = station['Qk'] if station['Qk'] != 0 else station['Vk']
@@ -79,12 +84,8 @@ def execute_instruction(name, station):
             print(f"Executed FP instruction at station {name}, result: {result}")
             return result
     elif name[0] == 'L':
-        if not check_if_load_ready(station):
-            return None
         return fetch.pull_value_from_register(station['address'])
     elif name[0] == 'S':
-        if not check_if_store_ready(station):
-            return None
         value = fetch.pull_value_from_register(station['Q'] if station['Q'] != '0' else station['V'])
         address = station['address']
         fetch.set_in_register(address, 0, value)

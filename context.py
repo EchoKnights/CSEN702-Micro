@@ -68,6 +68,8 @@ name = ""
 val_rs = 0
 val_rt = 0
 
+CDB = {}
+
 # ------------------------------------------------------------------- #
 
 g, f = 32, 32
@@ -195,6 +197,48 @@ def initialize_reservation_stations(g = 32, f= 32, a=3, fa=3, m=2, fm=2, l=3, s=
             "V": 0.0,
             "Q": "0",
         }
+        
+def write_to_CDB(payload):
+    global CDB
+    CDB = {}
+    CDB = payload
+    print(f"Written to CDB: {CDB}")
+        
+def listen_to_CDB():
+    global CDB
+    if not CDB:
+        return
+    
+    tag = CDB[0]
+    value = CDB[1]
+    
+    if tag is None or value is None:
+        return
+    
+    for station in fp_adder_reservation_stations.values():
+        if station["Qj"] == tag:
+            station["Vj"] = value
+            station["Qj"] = "0"
+        if station["Qk"] == tag:
+            station["Vk"] = value
+            station["Qk"] = "0"
+    
+    for station in fp_mult_reservation_stations.values():
+        if station["Qj"] == tag:
+            station["Vj"] = value
+            station["Qj"] = "0"
+        if station["Qk"] == tag:
+            station["Vk"] = value
+            station["Qk"] = "0"
+    
+    for reg in floating_point_registers.values():
+        if reg["Qi"] == tag:
+            reg["Value"] = value
+            reg["Qi"] = "0"
+        
+def initialize_clock_cycle():
+    global clock_cycle
+    clock_cycle = 1
     
 def initialize_simulator(instruction_file_path):
     instructions = open_instruction_file(instruction_file_path)
@@ -202,8 +246,5 @@ def initialize_simulator(instruction_file_path):
     initialize_data_memory()
     
     print("Simulator initialized.")
-    
-def initialize_clock_cycle():
-    global clock_cycle
-    clock_cycle = 0
+
         
