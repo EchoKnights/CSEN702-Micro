@@ -1,14 +1,11 @@
 import context
 
-
-def test_get_next_instruction():
-    print('\n')
-    print('Enter Next Instruction:')
-    print('-----------------------')
-    instruction = input().strip()
-    if instruction == "":
-        instruction = "0"
-    return instruction
+def get_current_instruction():
+    pc = context.pc
+    if pc < len(context.instruction_memory):
+        instruction = context.instruction_memory[pc]
+        return instruction
+    return None
 
 def pull_value_from_register(register):
     if not register:
