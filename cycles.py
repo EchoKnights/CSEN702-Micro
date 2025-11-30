@@ -9,12 +9,17 @@ Execute_Queue = []
 Ready_Queue = []
 Waiting_Queue = []
 Result_Queue = []
+Clear_Queue = []
 
 def print_state():
     print('\n')
     print(f"State of Load buffers: {context.load_buffers}")
     print('\n')
     print(f"State of Store buffers: {context.store_buffers}")
+    print('\n')
+    print(f"State of integer adder reservation stations: {context.adder_reservation_stations}")
+    print('\n')
+    print(f"State of integer multiplier reservation stations: {context.mult_reservation_stations}")
     print('\n')
     print(f"State of floating adder reservation stations: {context.fp_adder_reservation_stations}")
     print ('\n')
@@ -41,7 +46,6 @@ def fetch_cycle_helper():
     instruction = fetch.get_current_instruction()
     if instruction:
         print(f"Fetched instruction: {instruction}")
-        context.increment_pc(1)
         return instruction
     else:
         print("No more instructions to fetch.")
@@ -50,20 +54,48 @@ def fetch_cycle_helper():
 def fetch_cycle():
     print('Start of Fetch Cycle')
     print('\n')
+    print(f'PC at start of fetch: {context.pc}')
 
     instruction = fetch_cycle_helper()
     if instruction is not None:
         decoded_instruction = fetch.decode_instruction(instruction)
         print(f"Decoded instruction: {decoded_instruction}")
-        fetch.write_to_reservation_station(decoded_instruction)
+        continue_fetch = fetch.write_to_reservation_station(decoded_instruction)
+        if continue_fetch is None:
+            print("Stalling.")
+            return
+        else:
+            context.increment_pc(1)
+        print(f'PC after fetch: {context.pc}')
         print('End of Fetch Cycle')
+        
+    for name, station in context.adder_reservation_stations.items():
+        if station["busy"] == 1 and (name, station) not in TBE_Queue \
+        and (name, station) not in Execute_Queue \
+        and (name, station) not in Ready_Queue \
+        and (name, station) not in Waiting_Queue \
+        and (name, station) not in Result_Queue \
+        and (name, station) not in Clear_Queue:
+            TBE_Queue.append((name, station))
+            print(f'Added {name} to To Be Executed Queue')
+            
+    for name, station in context.mult_reservation_stations.items():
+        if station["busy"] == 1 and (name, station) not in TBE_Queue \
+        and (name, station) not in Execute_Queue \
+        and (name, station) not in Ready_Queue \
+        and (name, station) not in Waiting_Queue \
+        and (name, station) not in Result_Queue \
+        and (name, station) not in Clear_Queue:
+            TBE_Queue.append((name, station))
+            print(f'Added {name} to To Be Executed Queue')   
     
     for name, station in context.fp_adder_reservation_stations.items():
         if station["busy"] == 1 and (name, station) not in TBE_Queue \
         and (name, station) not in Execute_Queue \
         and (name, station) not in Ready_Queue \
         and (name, station) not in Waiting_Queue \
-        and (name, station) not in Result_Queue:
+        and (name, station) not in Result_Queue \
+        and (name, station) not in Clear_Queue:
             TBE_Queue.append((name, station))
             print(f'Added {name} to To Be Executed Queue')
     
@@ -72,7 +104,8 @@ def fetch_cycle():
         and (name, station) not in Execute_Queue \
         and (name, station) not in Ready_Queue \
         and (name, station) not in Waiting_Queue \
-        and (name, station) not in Result_Queue:
+        and (name, station) not in Result_Queue \
+        and (name, station) not in Clear_Queue:
             TBE_Queue.append((name, station))
             print(f'Added {name} to To Be Executed Queue')
             
@@ -81,7 +114,8 @@ def fetch_cycle():
         and (name, station) not in Execute_Queue \
         and (name, station) not in Ready_Queue \
         and (name, station) not in Waiting_Queue \
-        and (name, station) not in Result_Queue:
+        and (name, station) not in Result_Queue \
+        and (name, station) not in Clear_Queue:
             TBE_Queue.append((name, station))
             print(f'Added {name} to To Be Executed Queue')
             
@@ -90,7 +124,8 @@ def fetch_cycle():
         and (name, station) not in Execute_Queue \
         and (name, station) not in Ready_Queue \
         and (name, station) not in Waiting_Queue \
-        and (name, station) not in Result_Queue:
+        and (name, station) not in Result_Queue \
+        and (name, station) not in Clear_Queue:
             TBE_Queue.append((name, station))
             print(f'Added {name} to To Be Executed Queue')
     
@@ -108,6 +143,9 @@ def fetch_cycle():
     print('\n')
     print('Current Result Queue:')
     print(Result_Queue)
+    print('\n')
+    print('Current Clear Queue:')
+    print(Clear_Queue)
     print('\n')
     
 def execute_cycle():
@@ -147,14 +185,18 @@ def execute_cycle():
             context.load_buffers[name]['time'] = station['time']
         elif name.startswith('S'):
             context.store_buffers[name]['time'] = station['time']
+        elif name.startswith('A'):
+            context.adder_reservation_stations[name]['time'] = station['time']
+        elif name.startswith('M'):
+            context.mult_reservation_stations[name]['time'] = station['time']
         
         if station['time'] == 0:
             print(f"Station {name} has completed execution.")
             completed.append((name, station))
             
     for name, station in completed:
-        Execute_Queue.remove((name, station))
         Result_Queue.append((name, station))
+        Execute_Queue.remove((name, station))
         print(f"Station {name} moved from Execute to Result Queue")
 
     for name, station in list(Waiting_Queue):
@@ -177,6 +219,25 @@ def execute_cycle():
         
     
 def writeback_cycle():
+    if Clear_Queue:
+        for name, station in Clear_Queue:
+            station["busy"] = 0
+            if name.startswith('FA'):
+                context.fp_adder_reservation_stations[name]["busy"] = 0
+            elif name.startswith('FM'):
+                context.fp_mult_reservation_stations[name]["busy"] = 0
+            elif name.startswith('L'):
+                context.load_buffers[name]["busy"] = 0
+            elif name.startswith('S'):
+                context.store_buffers[name]["busy"] = 0
+            elif name.startswith('A'):
+                context.adder_reservation_stations[name]["busy"] = 0
+            elif name.startswith('M'):
+                context.mult_reservation_stations[name]["busy"] = 0
+        
+        print(f'Clearing Clear Queue: {Clear_Queue}')
+        Clear_Queue.clear()
+    
     if Result_Queue:
         name, station = Result_Queue[0]
 
@@ -196,29 +257,34 @@ def writeback_cycle():
             
     for name, station in list(Result_Queue):
         if name.startswith('FA'):
-            station["busy"] = 0
-            context.fp_adder_reservation_stations[name]["busy"] = 0
             for reg_name, reg in context.floating_point_registers.items():
                 if reg["Qi"] == name:
                     reg["Value"] = CDB.CDB['value']
                     reg["Qi"] = "0"
             print(f"Reservation station {name} has written back and is now free.")
+            Clear_Queue.append((name, station))
             Result_Queue.remove((name, station))
         elif name.startswith('FM'):
-            station["busy"] = 0
-            context.fp_mult_reservation_stations[name]["busy"] = 0
             for reg_name, reg in context.floating_point_registers.items():
                 if reg["Qi"] == name:
                     reg["Value"] = CDB.CDB['value']
                     reg["Qi"] = "0"
             print(f"Reservation station {name} has written back and is now free.")
+            Clear_Queue.append((name, station))
+            print(f"Reservation station {name} has written to Clear Queue.")
             Result_Queue.remove((name, station))
         elif name.startswith('L'):
-            station["busy"] = 0
-            context.load_buffers[name]["busy"] = 0
             for reg_name, reg in context.floating_point_registers.items():
                 if reg["Qi"] == name:
                     reg["Value"] = CDB.CDB['value']
                     reg["Qi"] = "0"
             print(f"Load buffer {name} has written back and is now free.")
+            Clear_Queue.append((name, station))
+            Result_Queue.remove((name, station))
+        elif name.startswith('A') or name.startswith('M'):
+            for reg_name, reg in context.general_registers.items():
+                if reg == name:
+                    context.general_registers[reg] = CDB.CDB['value']
+            print(f"Reservation station {name} has written back and is now free.")
+            Clear_Queue.append((name, station))
             Result_Queue.remove((name, station))

@@ -3,6 +3,22 @@ import fetch
 import execute
 
 def writeback(tag, value):
+    for station in context.fp_adder_reservation_stations.values():
+        if station["Qj"] == tag:
+            station["Vj"] = value
+            station["Qj"] = "0"
+        if station["Qk"] == tag:
+            station["Vk"] = value
+            station["Qk"] = "0"
+    
+    for station in context.adder_reservation_stations.values():
+        if station["Qj"] == tag:
+            station["Vj"] = value
+            station["Qj"] = "0"
+        if station["Qk"] == tag:
+            station["Vk"] = value
+            station["Qk"] = "0"
+    
     for station in context.mult_reservation_stations.values():
         if station["Qj"] == tag:
             station["Vj"] = value

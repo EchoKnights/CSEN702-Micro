@@ -1,5 +1,7 @@
 import context
 
+labels = {}
+
 def get_current_instruction():
     pc = context.pc
     if pc < len(context.instruction_memory):
@@ -52,6 +54,13 @@ def decode_instruction(instruction):
     val_rt = 0
     
     parts = instruction.split()
+    if (parts[0].endswith(':')):
+        label = parts[0][:-1]
+        labels[label] = context.pc
+        parts = parts[1:]
+        
+    print(f"Labels: {labels}")
+
     opcode = context.isa.get(parts[0], -1)
     operands = parts[1:] if len(parts) > 1 else []
 
@@ -131,11 +140,14 @@ def decode_instruction(instruction):
         elif (opcode == 25):  #JAL
             if len(operands) >= 1:
                 name = operands[0].strip(',')
-        elif (opcode == 26):  #BEQZ
+        elif (opcode == 26):  #BEQ
             if len(operands) >= 1:
                 rs = operands[0].strip(',')
+                print(f"BEQ rs: {rs}")
             if len(operands) >= 2:
-                name = operands[1].strip(',')
+                rt = operands[1].strip(',')
+            if len(operands) >= 3:
+                name = operands[2].strip(',')
         elif (opcode == 27):  #BNE
             if len(operands) >= 1:
                 rs = operands[0].strip(',')
@@ -148,7 +160,7 @@ def decode_instruction(instruction):
         val_rt = pull_value_from_register(rt)       
     
     testpayload = [opcode, operands, rs, rt, rd, immediate, address, name, val_rs, val_rt]
-    payload = [opcode, rs, rt, rd, immediate, address]
+    payload = [opcode, rs, rt, rd, immediate, address, name]
     opcode = operands = rs = rt = rd = immediate = address = name = val_rs = val_rt = 0
     
     return payload
@@ -160,22 +172,25 @@ def write_to_reservation_station(payload):
     rd = payload[3]
     immediate = payload[4]
     address = payload[5]
+    name = payload[6]
     
     print(f"Writing to reservation station with payload: {payload}")
     print({"opcode": opcode, "rs": rs, "rt": rt, "rd": rd, "immediate": immediate, "address": address})
     
     if opcode in range(0, 9):
         print("Writing to Load/Store Buffer")
-        write_to_ls_st_buffer(opcode, rd, rs, immediate, address)
+        return write_to_ls_st_buffer(opcode, rd, rs, immediate, address)
     elif opcode in range(9, 15):
         print("Writing to Integer Arithmetic Reservation Station")
+        return write_to_integer_reservation_station(opcode, rd, rs, rt, immediate)
     elif opcode in range(15, 23):
         print("Writing to Floating-Point Arithmetic Reservation Station")
-        write_to_fp_reservation_station(opcode, rd, rs, rt)
+        return write_to_fp_reservation_station(opcode, rd, rs, rt)
     elif opcode in range(23, 28):
-        print("Writing to Control Reservation Station")
+        return 0
     else:
         print("Unknown opcode; cannot write to reservation station")
+        return None
         
 def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
     buffer_name = None
@@ -208,6 +223,7 @@ def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
         context.load_buffers[buffer_name]["address"] = address
         set_in_register(rd, 1, buffer_name)
         print(f"Issued Load instruction to buffer {buffer_name}: {rd}, {rs}, {immediate}")
+        return 0
     elif flag == "S":
         context.store_buffers[buffer_name]["time"] = context.store_latency
         context.store_buffers[buffer_name]["busy"] = 1
@@ -221,8 +237,56 @@ def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
             context.store_buffers[buffer_name]["V"] = '-'
             context.store_buffers[buffer_name]["Q"] = qi_rt
         print(f"Issued Store instruction to buffer {buffer_name}: {rd}, {rs}, {immediate}")
+        return 0
         
+        
+def write_to_integer_reservation_station(opcode, rd, rs, rt, immediate):
+    if opcode in (10, 12):  # DADDI, DSUBI
+        stations = context.adder_reservation_stations
+        prefix = "A"
+    else:
+        return None
+    
+    station_name = None
+    i = 1
+    while f"{prefix}{i}" in stations:
+        if stations[f"{prefix}{i}"]["busy"] == 0:
+            station_name = f"{prefix}{i}"
+            break
+        i += 1
+    
+    if station_name is None:
+        print("No free Integer reservation station available")
+        return None
 
+    if (pull_qi_from_register(rs) == '0'):
+        vj = pull_value_from_register(rs)
+        qj = 0
+    else:
+        vj = '-'
+        qj = pull_qi_from_register(rs)
+    
+    if (opcode in (10, 12)):  # DADDI, DSUBI
+        stations[station_name]["time"] = context.add_latency
+        
+    stations[station_name]["busy"] = 1
+    stations[station_name]["op"] = opcode
+    stations[station_name]["A"] = immediate
+    
+    if qj == 0:
+        stations[station_name]["Vj"] = vj
+        stations[station_name]["Qj"] = 0
+    else:
+        stations[station_name]["Vj"] = '-'
+        stations[station_name]["Qj"] = qj
+    
+    if (rd is not None):
+        set_in_register(rd, 1, station_name)
+        
+    print(f"Issued Integer instruction to station {station_name}: {rd}, {rs}, {immediate}")
+    return 0
+   
+   
 def write_to_fp_reservation_station(opcode, rd, rs, rt):
     
     if opcode in range(15, 19):   # ADD.D, ADD.S, SUB.D, SUB.S
@@ -289,3 +353,23 @@ def write_to_fp_reservation_station(opcode, rd, rs, rt):
         stations[station_name]["Qk"] = qk
 
     print(f"Issued FP instruction to station {station_name}: {rd}, {rs}, {rt}")
+    return 0
+
+def handle_loop_instruction(opcode, rs_value, rt_value, name):
+    new_pc = None
+    new_pc = compute_loopback_address(name)
+    do_loop = compute_if_loop(rs_value, rt_value, opcode)
+
+def compute_if_loop(rs_value, rt_value, opcode):
+    if opcode == 26:  # BEQ
+        return rs_value == rt_value
+    elif opcode == 27:  # BNE
+        return rs_value != rt_value
+    return False
+
+def compute_loopback_address(label):
+    if label in labels:
+        return labels[label]
+    else:
+        print(f"Error: Label '{label}' not found.")
+        return 0
