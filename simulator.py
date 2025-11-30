@@ -6,8 +6,11 @@ import CDB
 
 
 fetch.set_in_register('R1', 0, 10)
-fetch.set_in_register('R2', 0, 20)
+fetch.set_in_register('R2', 0, 5)
+fetch.set_in_register('R3', 0, 12)
 fetch.set_in_register('R10', 0, 77)
+fetch.set_in_register('R26', 0, 30)
+fetch.set_in_register('R27', 0, 20)
 
 fetch.set_in_register('F1', 0, 5.5)
 fetch.set_in_register('F2', 0, 2.0)

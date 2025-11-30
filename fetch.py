@@ -68,10 +68,10 @@ def decode_instruction(instruction):
                 offset, rs_part = offset_part.split('(')
                 rs = rs_part.strip(')')
                 immediate = offset.strip()
-                address = rs + offset
+                rs_val = pull_value_from_register(rs)
+                address = str(int(immediate) + int(rs_val))
             else:
                 immediate = offset_part.strip()
-                address = immediate
                 
         if (5 <= opcode):
             temp = rs
@@ -265,8 +265,10 @@ def write_to_fp_reservation_station(opcode, rd, rs, rt):
 
     if (opcode in (15, 16, 17, 18)):  # ADD.D, ADD.S, SUB.D, SUB.S
         stations[station_name]["time"] = context.fp_add_latency
-    elif (opcode in (19, 20, 21, 22)):  # MUL.D, MUL.S, DIV.D, DIV.S
+    elif (opcode in (19, 20)):  # MUL.D, MUL.S, DIV.D, DIV.S
         stations[station_name]["time"] = context.fp_mult_latency
+    elif (opcode in (21, 22)):
+        stations[station_name]["time"] = context.fp_div_latency
     
     stations[station_name]["busy"] = 1
     stations[station_name]["op"] = opcode

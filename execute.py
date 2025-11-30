@@ -3,6 +3,7 @@ import fetch
 
             
 def execute_instruction(name, station):
+    address = 0
     if name[0] == 'F':
         if (name[1] == 'A') or (name[1] == 'M'):
             print (f"Executing FP instruction at station {name}")
@@ -28,7 +29,8 @@ def execute_instruction(name, station):
             print(f"Executed FP instruction at station {name}, result: {result}")
             return result
     elif name[0] == 'L':
-        return fetch.pull_value_from_register(station['address'])
+        address = station['address']
+        return address
     elif name[0] == 'S':
         if (station['Q'] in (0, '0')):
             value = station['V']

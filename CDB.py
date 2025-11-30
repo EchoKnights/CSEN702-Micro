@@ -1,5 +1,6 @@
 import context
 
+CDB = {} 
 CDB_Queue = []
 
 def Enter_CDB_Queue(tag, value):

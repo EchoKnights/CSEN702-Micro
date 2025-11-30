@@ -45,7 +45,8 @@ cache_hit_latency = 1
 cache_miss_penalty = 10
 
 fp_add_latency = 2
-fp_mult_latency = 6
+fp_mult_latency = 10
+fp_div_latency = 40
 load_latency = 2
 store_latency = 2
 add_latency = 1

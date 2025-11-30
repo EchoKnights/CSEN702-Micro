@@ -4,6 +4,7 @@ import execute
 import wb
 import CDB
 
+TBE_Queue = []
 Execute_Queue = []
 Ready_Queue = []
 Waiting_Queue = []
@@ -58,33 +59,44 @@ def fetch_cycle():
         print('End of Fetch Cycle')
     
     for name, station in context.fp_adder_reservation_stations.items():
-        if station["busy"] == 1 and (name, station) not in Execute_Queue \
+        if station["busy"] == 1 and (name, station) not in TBE_Queue \
+        and (name, station) not in Execute_Queue \
         and (name, station) not in Ready_Queue \
         and (name, station) not in Waiting_Queue \
         and (name, station) not in Result_Queue:
-            Execute_Queue.append((name, station))
+            TBE_Queue.append((name, station))
+            print(f'Added {name} to To Be Executed Queue')
     
     for name, station in context.fp_mult_reservation_stations.items():
-        if station["busy"] == 1 and (name, station) not in Execute_Queue \
+        if station["busy"] == 1 and (name, station) not in TBE_Queue \
+        and (name, station) not in Execute_Queue \
         and (name, station) not in Ready_Queue \
         and (name, station) not in Waiting_Queue \
         and (name, station) not in Result_Queue:
-            Execute_Queue.append((name, station))
+            TBE_Queue.append((name, station))
+            print(f'Added {name} to To Be Executed Queue')
             
     for name, station in context.load_buffers.items():
-        if station["busy"] == 1 and (name, station) not in Execute_Queue \
+        if station["busy"] == 1 and (name, station) not in TBE_Queue \
+        and (name, station) not in Execute_Queue \
         and (name, station) not in Ready_Queue \
         and (name, station) not in Waiting_Queue \
         and (name, station) not in Result_Queue:
-            Execute_Queue.append((name, station))
+            TBE_Queue.append((name, station))
+            print(f'Added {name} to To Be Executed Queue')
             
     for name, station in context.store_buffers.items():
-        if station["busy"] == 1 and (name, station) not in Execute_Queue \
+        if station["busy"] == 1 and (name, station) not in TBE_Queue \
+        and (name, station) not in Execute_Queue \
         and (name, station) not in Ready_Queue \
         and (name, station) not in Waiting_Queue \
         and (name, station) not in Result_Queue:
-            Execute_Queue.append((name, station))
+            TBE_Queue.append((name, station))
+            print(f'Added {name} to To Be Executed Queue')
     
+    print('Current To Be Executed Queue:')
+    print(TBE_Queue)
+    print('\n')
     print('Current Execute Queue:')
     print(Execute_Queue)
     print('\n')
@@ -94,37 +106,37 @@ def fetch_cycle():
     print('Current Waiting Queue:')
     print(Waiting_Queue)
     print('\n')
+    print('Current Result Queue:')
+    print(Result_Queue)
+    print('\n')
     
 def execute_cycle():
-    CDB.listen_to_CDB()
+    for name, station in list(Ready_Queue):
+        Execute_Queue.append((name, station))
+        Ready_Queue.remove((name, station))
+        print(f'Station {name} moved from Ready to Execute Queue')
     
-    for name, station in list(Execute_Queue):
+    for name, station in list(TBE_Queue):
         if name.startswith('FA') or name.startswith('FM'):
             if station['Qj'] in (0, '0') and station['Qk'] in (0, '0'):
                 Ready_Queue.append((name, station))
-                Execute_Queue.remove((name, station))
+                TBE_Queue.remove((name, station))
             else:
-                Execute_Queue.remove((name, station))
                 Waiting_Queue.append((name, station))
+                TBE_Queue.remove((name, station))
         elif name.startswith('L'):
-            Ready_Queue.append((name, station))
-            Execute_Queue.remove((name, station))
+            Execute_Queue.append((name, station))
+            TBE_Queue.remove((name, station))
         elif name.startswith('S'):
             if station['Q'] == '0':
-                Ready_Queue.append((name, station))
-                Execute_Queue.remove((name, station))
+                Execute_Queue.append((name, station))
+                TBE_Queue.remove((name, station))
             else:
-                Execute_Queue.remove((name, station))
                 Waiting_Queue.append((name, station))
-    
-    for name, station in list(Waiting_Queue):
-        if station['Qj'] in (0, '0') and station['Qk'] in (0, '0'):
-            print(f'Station {name} is now ready to execute with values Vj={station["Vj"]}, Vk={station["Vk"]}, Qj={station["Qj"]}, Qk={station["Qk"]}.')
-            Ready_Queue.append((name, station))
-            print(f'Station {name} moved from Waiting to Ready Queue')
-            Waiting_Queue.remove((name, station))
-    
-    for name, station in list(Ready_Queue):
+                TBE_Queue.remove((name, station))
+        
+    completed = []    
+    for name, station in list(Execute_Queue):
         station['time'] -= 1
         print(f"Decremented time for station {name}, remaining time: {station['time']}")
         if name.startswith('FA'):
@@ -137,20 +149,44 @@ def execute_cycle():
             context.store_buffers[name]['time'] = station['time']
         
         if station['time'] == 0:
-            print(f'Station {name} has completed execution.')
-            tag = name
-            result = execute.execute_instruction(name, station)
-            CDB.Enter_CDB_Queue(tag, result)
-            Result_Queue.append((name, station))
-            Ready_Queue.remove((name, station))
-        
+            print(f"Station {name} has completed execution.")
+            completed.append((name, station))
+            
+    for name, station in completed:
+        Execute_Queue.remove((name, station))
+        Result_Queue.append((name, station))
+        print(f"Station {name} moved from Execute to Result Queue")
+
+    for name, station in list(Waiting_Queue):
+        if station['Qj'] in (0, '0') and station['Qk'] in (0, '0'):
+            Ready_Queue.append((name, station))
+            Waiting_Queue.remove((name, station))
+            print(
+                f"Station {name} is now ready to execute with values "
+                f"Vj={station['Vj']}, Vk={station['Vk']}, "
+                f"Qj={station['Qj']}, Qk={station['Qk']}."
+            )        
     print('End of Execute Cycle')
     
-def writeback_cycle():
-    CDB.write_to_CDB()
-
-    CDB.listen_to_CDB()
+    for name, station in list(Waiting_Queue):
+        if station['Qj'] in (0, '0') and station['Qk'] in (0, '0'):
+            print(f'Station {name} is now ready to execute with values Vj={station["Vj"]}, Vk={station["Vk"]}, Qj={station["Qj"]}, Qk={station["Qk"]}.')
+            Execute_Queue.append((name, station))
+            print(f'Station {name} moved from Waiting to Execute Queue')
+            Waiting_Queue.remove((name, station))
+        
     
+def writeback_cycle():
+    if Result_Queue:
+        name, station = Result_Queue[0]
+
+        tag = name
+        result = execute.execute_instruction(name, station)
+        print(f'Station {name} produced result: {result}')
+        CDB.Enter_CDB_Queue(tag, result)
+        CDB.write_to_CDB()
+        CDB.listen_to_CDB()
+        
     for name, station in context.store_buffers.items():
         if station['busy'] == 1 and station["Q"] in (0, '0'):
             #later: actually write to data_memory using station["address"]
