@@ -27,7 +27,7 @@ isa = {
     'J': 23,
     'JR': 24,
     'JAL': 25,
-    'BEQZ': 26,
+    'BEQ': 26,
     'BNE': 27,
     
     'NOP': 0
@@ -136,8 +136,8 @@ def initialize_reservation_stations(g = 32, f= 32, a=3, fa=3, m=2, fm=2, l=3, s=
             "time": 0,
             "busy": 0,
             "op": None,
-            "Vj": 0.0,
-            "Vk": 0.0,
+            "Vj": 0,
+            "Vk": 0,
             "Qj": "0",
             "Qk": "0",
             "A":  "",

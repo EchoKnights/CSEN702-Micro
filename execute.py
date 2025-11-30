@@ -7,23 +7,13 @@ def execute_instruction(name, station):
     if name[0] == 'F':
         if (name[1] == 'A') or (name[1] == 'M'):
             print (f"Executing FP instruction at station {name}")
-
-            
             if (station['Qj'] in (0, '0')):
-                print(station['Qj'])
-                print(1)
                 res_1 = station['Vj']
             else: 
-                print(station['Qj'])
-                print(2)
                 res_1 = station['Qj']
             if (station['Qk'] in (0, '0')):
-                print(station['Qk'])
-                print(1)
                 res_2 = station['Vk']
             else:
-                print(station['Qk'])
-                print(2)
                 res_2 = station['Qk']
             result = execute_fp_arithmatic(station['op'], res_1, res_2)
             print(f"Executed FP instruction at station {name}, result: {result}")
@@ -40,7 +30,18 @@ def execute_instruction(name, station):
         fetch.set_in_register(address, 0, value)
         return 1
     else:
-        return execute_integer_arithmatic()
+        print (f"Executing Integer instruction at station {name}")
+        if (station['Qj'] in (0, '0')):
+            res_1 = station['Vj']
+        else: 
+            res_1 = station['Qj']
+        if (station['Qk'] in (0, '0')):
+            res_2 = station['Vk']
+        else:
+            res_2 = station['Qk']
+        result = execute_integer_arithmatic(station['op'], res_1, res_2, station.get('immediate', 0))
+        print(f"Executed Integer instruction at station {name}, result: {result}")
+        return result
     
 def execute_fp_arithmatic(op, rs, rt):
     if op == 15:  # ADD.D
@@ -60,5 +61,16 @@ def execute_fp_arithmatic(op, rs, rt):
     elif op == 22:  # DIV.S
         return int(rs) / int(rt)
     
-def execute_integer_arithmatic():
-    return
+def execute_integer_arithmatic(op, rs, rt, immediate):
+    if op == 9:  # ADD
+        return rs + rt
+    elif op == 10:  # DADDI
+        return rs + immediate
+    elif op == 11:  # SUB
+        return rs - rt
+    elif op == 12:  # DSUBI
+        return rs - immediate
+    elif op == 13:  # MUL
+        return rs * rt
+    elif op == 14:  # DIV
+        return rs / rt
