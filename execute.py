@@ -39,7 +39,7 @@ def execute_instruction(name, station):
             res_2 = station['Vk']
         else:
             res_2 = station['Qk']
-        result = execute_integer_arithmatic(station['op'], res_1, res_2, station.get('immediate', 0))
+        result = execute_integer_arithmatic(station['op'], res_1, res_2, station['A'])
         print(f"Executed Integer instruction at station {name}, result: {result}")
         return result
     
@@ -63,14 +63,14 @@ def execute_fp_arithmatic(op, rs, rt):
     
 def execute_integer_arithmatic(op, rs, rt, immediate):
     if op == 9:  # ADD
-        return rs + rt
+        return int(rs) + int(rt)
     elif op == 10:  # DADDI
-        return rs + immediate
+        return int(rs) + int(immediate)
     elif op == 11:  # SUB
-        return rs - rt
+        return int(rs) - int(rt)
     elif op == 12:  # DSUBI
-        return rs - immediate
+        return int(rs) - int(immediate)
     elif op == 13:  # MUL
-        return rs * rt
+        return int(rs) * int(rt)
     elif op == 14:  # DIV
-        return rs / rt
+        return int(rs) / int(rt)
