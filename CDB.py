@@ -72,8 +72,11 @@ def listen_to_CDB():
             reg["Qi"] = "0"
             
     for buffer in context.store_buffers.values():
-        if buffer["Q"] == tag:
-            buffer["V"] = value
-            buffer["Q"] = "0"
+        if buffer["Qj"] == tag:
+            buffer["Vj"] = value
+            buffer["Qj"] = "0"
+        if buffer["Qk"] == tag:
+            buffer["Vk"] = value
+            buffer["Qk"] = "0"
 
         

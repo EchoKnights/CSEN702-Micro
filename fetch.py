@@ -4,7 +4,7 @@ labels = {}
 
 def get_current_instruction():
     pc = context.pc
-    if pc < len(context.instruction_memory):
+    if pc < len(context.instruction_memory) and context.STALL == False:
         instruction = context.instruction_memory[pc]
         return instruction
     return None
@@ -15,7 +15,7 @@ def pull_value_from_register(register):
     register = register.strip()
     if register.startswith('F'):
         return context.floating_point_registers[register]["Value"]
-    return context.general_registers[register][0]
+    return context.general_registers[register]["Value"]
     
 def pull_qi_from_register(register):
     if not register:
@@ -23,7 +23,7 @@ def pull_qi_from_register(register):
     register = register.strip()
     if register.startswith('F'):
         return context.floating_point_registers[register]["Qi"]
-    return 0
+    return context.general_registers[register]["Qi"]
     
 def set_in_register(register, tag, value):
     if not register:
@@ -34,13 +34,19 @@ def set_in_register(register, tag, value):
         if register.startswith('F'):
             context.floating_point_registers[register]["Value"] = value
         else:
-            context.general_registers[register][0] = value
+            context.general_registers[register]["Value"] = value
     else:
         if register.startswith('F'):
             context.floating_point_registers[register]["Qi"] = value
         else:
-            return
+            context.general_registers[register]["Qi"] = value
 
+
+def get_from_memory(address):
+    return address
+
+def write_to_memory(address, value):
+    return
     
 def decode_instruction(instruction):
     rs = None
@@ -140,21 +146,13 @@ def decode_instruction(instruction):
         elif (opcode == 25):  #JAL
             if len(operands) >= 1:
                 name = operands[0].strip(',')
-        elif (opcode == 26):  #BEQ
+        elif ((opcode == 26) or (opcode == 27)):  #BEQ or BNE
             if len(operands) >= 1:
                 rs = operands[0].strip(',')
-                print(f"BEQ rs: {rs}")
             if len(operands) >= 2:
                 rt = operands[1].strip(',')
             if len(operands) >= 3:
                 name = operands[2].strip(',')
-        elif (opcode == 27):  #BNE
-            if len(operands) >= 1:
-                rs = operands[0].strip(',')
-            if len(operands) >= 2:
-                rt = operands[1].strip(',')
-            if len(operands) >= 3:
-                name = operands[2].strip(',')  
                 
         val_rs = pull_value_from_register(rs)
         val_rt = pull_value_from_register(rt)       
@@ -187,6 +185,9 @@ def write_to_reservation_station(payload):
         print("Writing to Floating-Point Arithmetic Reservation Station")
         return write_to_fp_reservation_station(opcode, rd, rs, rt)
     elif opcode in range(23, 28):
+        print("Handling Control Instruction")
+        write_control_instruction(opcode, rs, rt, immediate, name)
+        context.stall_pipeline()
         return 0
     else:
         print("Unknown opcode; cannot write to reservation station")
@@ -215,30 +216,49 @@ def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
             
     if buffer_name is None:
         print("No free Load/Store buffer available")
+        context.stall_pipeline()
         return None
+    context.unstall_pipeline()
     
-    if flag == "L":
-        context.load_buffers[buffer_name]["time"] = context.load_latency
-        context.load_buffers[buffer_name]["busy"] = 1
-        context.load_buffers[buffer_name]["address"] = address
-        set_in_register(rd, 1, buffer_name)
-        print(f"Issued Load instruction to buffer {buffer_name}: {rd}, {rs}, {immediate}")
-        return 0
-    elif flag == "S":
-        context.store_buffers[buffer_name]["time"] = context.store_latency
-        context.store_buffers[buffer_name]["busy"] = 1
-        context.store_buffers[buffer_name]["address"] = address
-        val_rt = pull_value_from_register(rs)
-        qi_rt = pull_qi_from_register(rs)
-        if qi_rt in (0, '0'):
-            context.store_buffers[buffer_name]["V"] = val_rt
-            context.store_buffers[buffer_name]["Q"] = 0
-        else:
-            context.store_buffers[buffer_name]["V"] = '-'
-            context.store_buffers[buffer_name]["Q"] = qi_rt
-        print(f"Issued Store instruction to buffer {buffer_name}: {rd}, {rs}, {immediate}")
-        return 0
+    if (pull_qi_from_register(rs) in (0, '0')):
+        vj = pull_value_from_register(rs)
+        qj = 0
+    else:
+        vj = '-'
+        qj = pull_qi_from_register(rs)
+
+    if (rd is not None):
+        set_in_register(rd, 1, buffer_name)     
         
+    if (flag == "L"):
+        buffers = context.load_buffers
+        buffers[buffer_name]["time"] = context.load_latency
+        buffers[buffer_name]["op"] = opcode
+        buffers[buffer_name]['Busy'] = 1
+        if qj == 0:
+            buffers[buffer_name]["Vj"] = vj
+            buffers[buffer_name]["Qj"] = 0
+            buffers[buffer_name]["A"] = address
+        else:
+            buffers[buffer_name]["Vj"] = '-'
+            buffers[buffer_name]["Qj"] = qj
+            buffers[buffer_name]["A"] = immediate
+    elif (flag == "S"):
+        buffers = context.store_buffers
+        buffers[buffer_name]["time"] = context.store_latency
+        buffers[buffer_name]["op"] = opcode
+        buffers[buffer_name]['Busy'] = 1
+        if qj == 0:
+            buffers[buffer_name]["Vj"] = vj
+            buffers[buffer_name]["Qj"] = 0
+            buffers[buffer_name]["A"] = address
+        else:
+            buffers[buffer_name]["Vj"] = '-'
+            buffers[buffer_name]["Qj"] = qj
+            buffers[buffer_name]["A"] = immediate
+            
+    print(f"Issued Load/Store instruction to buffer {buffer_name}: {rd}, {rs}, {immediate}, {address}")
+    return 0
         
 def write_to_integer_reservation_station(opcode, rd, rs, rt, immediate):
     if opcode in (10, 12):  # DADDI, DSUBI
@@ -257,7 +277,9 @@ def write_to_integer_reservation_station(opcode, rd, rs, rt, immediate):
     
     if station_name is None:
         print("No free Integer reservation station available")
+        context.stall_pipeline()
         return None
+    context.unstall_pipeline()
 
     if (pull_qi_from_register(rs) in (0, '0')):
         vj = pull_value_from_register(rs)
@@ -278,11 +300,9 @@ def write_to_integer_reservation_station(opcode, rd, rs, rt, immediate):
     if qj == 0:
         stations[station_name]["Vj"] = vj
         stations[station_name]["Qj"] = 0
-        print(1)
     else:
         stations[station_name]["Vj"] = '-'
         stations[station_name]["Qj"] = qj
-        print(2)
         
 
         
@@ -311,7 +331,9 @@ def write_to_fp_reservation_station(opcode, rd, rs, rt):
 
     if station_name is None:
         print("No free FP reservation station available")
+        context.stall_pipeline()
         return None
+    context.unstall_pipeline()
 
     if (pull_qi_from_register(rs) in (0, '0')):
         vj = pull_value_from_register(rs)
@@ -358,21 +380,58 @@ def write_to_fp_reservation_station(opcode, rd, rs, rt):
     print(f"Issued FP instruction to station {station_name}: {rd}, {rs}, {rt}")
     return 0
 
-def handle_loop_instruction(opcode, rs_value, rt_value, name):
-    new_pc = None
-    new_pc = compute_loopback_address(name)
-    do_loop = compute_if_loop(rs_value, rt_value, opcode)
-
-def compute_if_loop(rs_value, rt_value, opcode):
-    if opcode == 26:  # BEQ
-        return rs_value == rt_value
-    elif opcode == 27:  # BNE
-        return rs_value != rt_value
-    return False
-
-def compute_loopback_address(label):
-    if label in labels:
-        return labels[label]
+def write_control_instruction(op, rs, rt, immediate, name):
+    print(f"Writing control instruction: op={op}, rs={rs}, rt={rt}, immediate={immediate}, name={name}")
+    prefix = ''
+    stations = {}
+    if (op in (26, 27)): #BEQ OR BNE
+        stations = context.adder_reservation_stations
+        prefix = 'A'
+    
+    station_name = None
+    i = 1
+    while f"{prefix}{i}" in stations:
+        if stations[f"{prefix}{i}"]["busy"] == 0:
+            station_name = f"{prefix}{i}"
+            break
+        i += 1
+        
+    if station_name is None:
+        print("No free adder reservation station available for control instruction")
+        return None
+    
+    if (pull_qi_from_register(rs) in (0, '0')):
+        vj = pull_value_from_register(rs)
+        qj = 0
     else:
-        print(f"Error: Label '{label}' not found.")
-        return 0
+        vj = '-'
+        qj = pull_qi_from_register(rs)
+    
+    if (pull_qi_from_register(rt) in (0, '0')):
+        vk = pull_value_from_register(rt)
+        qk = 0
+    else:
+        vk = '-'
+        qk = pull_qi_from_register(rt)
+        
+    stations[station_name]["busy"] = 1
+    stations[station_name]["op"] = op
+    stations[station_name]["A"] = name
+        
+    stations[station_name]["time"] = 1
+    
+    if (pull_qi_from_register(rs) in (0, '0')):
+        stations[station_name]["Vj"] = vj
+        stations[station_name]["Qj"] = 0
+    else:
+        stations[station_name]["Vj"] = '-'
+        stations[station_name]["Qj"] = qj
+    if (pull_qi_from_register(rt) in (0, '0')):
+        stations[station_name]["Vk"] = vk
+        stations[station_name]["Qk"] = 0
+    else:
+        stations[station_name]["Vk"] = '-'
+        stations[station_name]["Qk"] = qk
+        
+    print(f"Issued Control instruction to station {station_name}: op={op}, rs={rs}, rt={rt}, name={name}")
+    return 0

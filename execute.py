@@ -19,16 +19,37 @@ def execute_instruction(name, station):
             print(f"Executed FP instruction at station {name}, result: {result}")
             return result
     elif name[0] == 'L':
-        address = station['address']
-        return address
+        print (f'Executing Load instruction at station {name}')
+        if station['Qj'] in (0, '0'):
+            res_1 = station['Vj']
+        else: 
+            res_1 = station['Qj']
+            
+        address = res_1 + station['A']
+        result = fetch.get_from_memory(address)
+        return result
     elif name[0] == 'S':
-        if (station['Q'] in (0, '0')):
-            value = station['V']
+        print (f'Executing Store instruction at station {name}')
+        if station['Qj'] in (0, '0'):
+            res_1 = station['Vj']
+        else: 
+            res_1 = station['Qj']
+            
+        address = res_1 + station['A']
+        value = None
+        print(address)
+        return fetch.write_to_memory(address, value)
+    elif station['op'] in (26, 27):
+        print (f"Executing Loop instruction at station {name}")
+        if (station['Qj'] in (0, '0')):
+            res_1 = station['Vj']
+        else: 
+            res_1 = station['Qj']
+        if (station['Qk'] in (0, '0')):
+            res_2 = station['Vk']
         else:
-            value = station['Q']
-        address = station['address']
-        fetch.set_in_register(address, 0, value)
-        return 1
+            res_2 = station['Qk']
+        handle_loop_instruction(station['op'], res_1,  res_2, station['A'])
     else:
         print (f"Executing Integer instruction at station {name}")
         if (station['Qj'] in (0, '0')):
@@ -74,3 +95,33 @@ def execute_integer_arithmatic(op, rs, rt, immediate):
         return int(rs) * int(rt)
     elif op == 14:  # DIV
         return int(rs) / int(rt)
+    
+    
+def handle_loop_instruction(opcode, rs_value, rt_value, name):
+    new_pc = None
+    new_pc = compute_loopback_address(name)
+    do_loop = compute_if_loop(rs_value, rt_value, opcode)
+    if do_loop is True:
+        context.pc = new_pc
+        print(f"Loop taken. New PC: {context.pc}")
+        context.unstall_pipeline()
+        return None
+    else:
+        print("Loop not taken.")
+        context.increment_pc(1)
+        context.unstall_pipeline()
+        return 0
+
+def compute_if_loop(rs_value, rt_value, opcode):
+    if opcode == 26:  # BEQ
+        return rs_value == rt_value
+    elif opcode == 27:  # BNE
+        return rs_value != rt_value
+    return False
+
+def compute_loopback_address(label):
+    if label in fetch.labels:
+        return fetch.labels[label]
+    else:
+        print(f"Error: Label '{label}' not found.")
+        return 0
