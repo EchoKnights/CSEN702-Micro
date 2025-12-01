@@ -74,6 +74,8 @@ CDB = {
     "value": None,
 }
 
+STALL = False
+
 # ------------------------------------------------------------------- #
 
 g, f = 32, 32
@@ -82,8 +84,10 @@ general_registers = {}
 floating_point_registers = {}
 
 for i in range(g):
-    general_registers[f"R{i}"] = [0]
-
+    general_registers[f"R{i}"] = {
+        "Value": 0.0,
+        "Qi": "0",
+}
 for i in range(f):
     floating_point_registers[f"F{i}"] = {
         "Value": 0.0,
@@ -191,7 +195,12 @@ def initialize_reservation_stations(g = 32, f= 32, a=3, fa=3, m=2, fm=2, l=3, s=
         load_buffers[name] = {
             'time': 0,
             "busy": 0,
-            "address": "",
+            "op": None,
+            "Vj": 0.0,
+            "Vk": 0.0,
+            "Qj": "0",
+            "Qk": "0",
+            "A":  "",
         }
         
     for i in range(s):
@@ -200,9 +209,12 @@ def initialize_reservation_stations(g = 32, f= 32, a=3, fa=3, m=2, fm=2, l=3, s=
         store_buffers[name] = {
             'time': 0,
             "busy": 0,
-            "address": "",
-            "V": 0.0,
-            "Q": "0",
+            "op": None,
+            "Vj": 0.0,
+            "Vk": 0.0,
+            "Qj": "0",
+            "Qk": "0",
+            "A":  "",
         }
         
 def initialize_clock_cycle():
@@ -228,3 +240,13 @@ def initialize_simulator(instruction_file_path):
     print("Simulator initialized.")
 
         
+def stall_pipeline():
+    global STALL
+    STALL = True
+    print("Pipeline stalled.")
+    
+def unstall_pipeline():
+    global STALL
+    STALL = False
+    print("Pipeline unstalled.")
+    

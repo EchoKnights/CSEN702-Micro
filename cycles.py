@@ -47,6 +47,9 @@ def fetch_cycle_helper():
     if instruction:
         print(f"Fetched instruction: {instruction}")
         return instruction
+    elif context.STALL == True:
+        print("Pipeline is Stalled. No instruction fetched.")
+        return None
     else:
         print("No more instructions to fetch.")
         return None
@@ -60,9 +63,9 @@ def fetch_cycle():
     if instruction is not None:
         decoded_instruction = fetch.decode_instruction(instruction)
         print(f"Decoded instruction: {decoded_instruction}")
-        continue_fetch = fetch.write_to_reservation_station(decoded_instruction)
-        if continue_fetch is None:
-            print("Stalling.")
+        fetch.write_to_reservation_station(decoded_instruction)
+        if context.STALL == True:
+            print("Pipeline is Stalled.")
         else:
             context.increment_pc(1)
         print(f'PC after fetch: {context.pc}')
@@ -290,8 +293,9 @@ def writeback_cycle():
             Result_Queue.remove((name, station))
         elif name.startswith('A') or name.startswith('M'):
             for reg_name, reg in context.general_registers.items():
-                if reg == name:
-                    context.general_registers[reg] = CDB.CDB['value']
+                if reg["Qi"] == name:
+                    reg["Value"] = CDB.CDB['value']
+                    reg["Qi"] = "0"
             for reg_name, reg in context.floating_point_registers.items():
                 if reg["Qi"] == name:
                     reg["Value"] = CDB.CDB['value']
