@@ -1,8 +1,7 @@
 working on:
-stalls and loops
+cache
 
 To be done:
-loops
 cache
 gui
 code refinement
@@ -15,3 +14,5 @@ writeback
 cycles
 floating point operations
 integer operations
+stalls and loops
+load/store fix
