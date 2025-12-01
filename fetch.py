@@ -230,7 +230,7 @@ def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
         context.store_buffers[buffer_name]["address"] = address
         val_rt = pull_value_from_register(rs)
         qi_rt = pull_qi_from_register(rs)
-        if qi_rt == '0':
+        if qi_rt in (0, '0'):
             context.store_buffers[buffer_name]["V"] = val_rt
             context.store_buffers[buffer_name]["Q"] = 0
         else:
@@ -259,12 +259,14 @@ def write_to_integer_reservation_station(opcode, rd, rs, rt, immediate):
         print("No free Integer reservation station available")
         return None
 
-    if (pull_qi_from_register(rs) == '0'):
+    if (pull_qi_from_register(rs) in (0, '0')):
         vj = pull_value_from_register(rs)
         qj = 0
     else:
         vj = '-'
         qj = pull_qi_from_register(rs)
+    if (rd is not None):
+        set_in_register(rd, 1, station_name)
     
     if (opcode in (10, 12)):  # DADDI, DSUBI
         stations[station_name]["time"] = context.add_latency
@@ -276,12 +278,13 @@ def write_to_integer_reservation_station(opcode, rd, rs, rt, immediate):
     if qj == 0:
         stations[station_name]["Vj"] = vj
         stations[station_name]["Qj"] = 0
+        print(1)
     else:
         stations[station_name]["Vj"] = '-'
         stations[station_name]["Qj"] = qj
-    
-    if (rd is not None):
-        set_in_register(rd, 1, station_name)
+        print(2)
+        
+
         
     print(f"Issued Integer instruction to station {station_name}: {rd}, {rs}, {immediate}")
     return 0
@@ -310,14 +313,14 @@ def write_to_fp_reservation_station(opcode, rd, rs, rt):
         print("No free FP reservation station available")
         return None
 
-    if (pull_qi_from_register(rs) == '0'):
+    if (pull_qi_from_register(rs) in (0, '0')):
         vj = pull_value_from_register(rs)
         qj = 0
     else:
         vj = '-'
         qj = pull_qi_from_register(rs)
 
-    if (pull_qi_from_register(rt) == '0'):
+    if (pull_qi_from_register(rt) in (0, '0')):
         vk = pull_value_from_register(rt)
         qk = 0
     else:

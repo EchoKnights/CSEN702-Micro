@@ -63,7 +63,6 @@ def fetch_cycle():
         continue_fetch = fetch.write_to_reservation_station(decoded_instruction)
         if continue_fetch is None:
             print("Stalling.")
-            return
         else:
             context.increment_pc(1)
         print(f'PC after fetch: {context.pc}')
@@ -157,7 +156,7 @@ def execute_cycle():
     for name, station in list(TBE_Queue):
         if name.startswith('FA') or name.startswith('FM'):
             if station['Qj'] in (0, '0') and station['Qk'] in (0, '0'):
-                Ready_Queue.append((name, station))
+                Execute_Queue.append((name, station))
                 TBE_Queue.remove((name, station))
             else:
                 Waiting_Queue.append((name, station))
@@ -167,6 +166,14 @@ def execute_cycle():
             TBE_Queue.remove((name, station))
         elif name.startswith('S'):
             if station['Q'] == '0':
+                Execute_Queue.append((name, station))
+                TBE_Queue.remove((name, station))
+            else:
+                Waiting_Queue.append((name, station))
+                TBE_Queue.remove((name, station))
+        
+        if name.startswith('A') or name.startswith('M'):
+            if station['Qj'] in (0, '0') and station['Qk'] in (0, '0'):
                 Execute_Queue.append((name, station))
                 TBE_Queue.remove((name, station))
             else:
@@ -285,6 +292,10 @@ def writeback_cycle():
             for reg_name, reg in context.general_registers.items():
                 if reg == name:
                     context.general_registers[reg] = CDB.CDB['value']
+            for reg_name, reg in context.floating_point_registers.items():
+                if reg["Qi"] == name:
+                    reg["Value"] = CDB.CDB['value']
+                    reg["Qi"] = "0"
             print(f"Reservation station {name} has written back and is now free.")
             Clear_Queue.append((name, station))
             Result_Queue.remove((name, station))

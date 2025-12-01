@@ -15,7 +15,7 @@ fetch.set_in_register('R27', 0, 20)
 fetch.set_in_register('F1', 0, 5.5)
 fetch.set_in_register('F2', 0, 2.0)
 fetch.set_in_register('F3', 1, "A3")
-
+fetch.set_in_register('F10', 0, 10.0)
 
 context.initialize_simulator('instructions.txt')
 
