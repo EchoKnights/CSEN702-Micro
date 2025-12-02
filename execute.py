@@ -25,7 +25,7 @@ def execute_instruction(name, station):
         else: 
             res_1 = station['Qj']
             
-        address = res_1 + station['A']
+        address = int(res_1) + int(station['A'])
         result = fetch.get_from_memory(address)
         return result
     elif name[0] == 'S':
@@ -35,10 +35,9 @@ def execute_instruction(name, station):
         else: 
             res_1 = station['Qj']
             
-        address = res_1 + station['A']
-        value = None
+        address = int(res_1) + int(station['A'])
         print(address)
-        return fetch.write_to_memory(address, value)
+        return address
     elif station['op'] in (26, 27):
         print (f"Executing Loop instruction at station {name}")
         if (station['Qj'] in (0, '0')):

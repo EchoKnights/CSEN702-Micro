@@ -130,6 +130,7 @@ def fetch_cycle():
         and (name, station) not in Clear_Queue:
             TBE_Queue.append((name, station))
             print(f'Added {name} to To Be Executed Queue')
+            
     
     print('Current To Be Executed Queue:')
     print(TBE_Queue)
@@ -168,7 +169,7 @@ def execute_cycle():
             Execute_Queue.append((name, station))
             TBE_Queue.remove((name, station))
         elif name.startswith('S'):
-            if station['Q'] == '0':
+            if station['Qj'] == '0':
                 Execute_Queue.append((name, station))
                 TBE_Queue.remove((name, station))
             else:
@@ -250,6 +251,12 @@ def writeback_cycle():
     
     if Result_Queue:
         name, station = Result_Queue[0]
+        
+        if name.startswith('S'):
+            fetch.write_to_memory(station, CDB.CDB['value'])
+            print(f"Store buffer {name} has written and is now free.")
+            Clear_Queue.append((name, station))
+            Result_Queue.remove((name, station))
 
         tag = name
         result = execute.execute_instruction(name, station)
@@ -257,13 +264,6 @@ def writeback_cycle():
         CDB.Enter_CDB_Queue(tag, result)
         CDB.write_to_CDB()
         CDB.listen_to_CDB()
-        
-    for name, station in context.store_buffers.items():
-        if station['busy'] == 1 and station["Q"] in (0, '0'):
-            #later: actually write to data_memory using station["address"]
-            station["busy"] = 0
-            context.store_buffers[name]["busy"] = 0
-            print(f"Store buffer {name} has written and is now free.")
             
     for name, station in list(Result_Queue):
         if name.startswith('FA'):
