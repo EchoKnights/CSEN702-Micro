@@ -47,7 +47,7 @@ while True:
 
     cycles.fetch_cycle()
 
-    #cycles.print_state()
+    cycles.print_state()
 
     if done():
         break

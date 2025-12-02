@@ -234,7 +234,7 @@ def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
         buffers = context.load_buffers
         buffers[buffer_name]["time"] = context.load_latency
         buffers[buffer_name]["op"] = opcode
-        buffers[buffer_name]['Busy'] = 1
+        buffers[buffer_name]['busy'] = 1
         if qj == 0:
             buffers[buffer_name]["Vj"] = vj
             buffers[buffer_name]["Qj"] = 0
@@ -247,7 +247,7 @@ def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
         buffers = context.store_buffers
         buffers[buffer_name]["time"] = context.store_latency
         buffers[buffer_name]["op"] = opcode
-        buffers[buffer_name]['Busy'] = 1
+        buffers[buffer_name]['busy'] = 1
         if qj == 0:
             buffers[buffer_name]["Vj"] = vj
             buffers[buffer_name]["Qj"] = 0
