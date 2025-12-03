@@ -40,13 +40,6 @@ def set_in_register(register, tag, value):
             context.floating_point_registers[register]["Qi"] = value
         else:
             context.general_registers[register]["Qi"] = value
-
-
-def get_from_memory(address):
-    return address
-
-def write_to_memory(address, value):
-    return
     
 def decode_instruction(instruction):
     rs = None
@@ -196,6 +189,8 @@ def write_to_reservation_station(payload):
 def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
     buffer_name = None
     flag = ""
+    qk = 0
+    vk = 0
     
     if (1 <= opcode <= 4):  # L
         i = 1
@@ -227,7 +222,7 @@ def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
         vj = '-'
         qj = pull_qi_from_register(rs)
 
-    if (rd is not None):
+    if (rd is not None) and (flag == "L"):
         set_in_register(rd, 1, buffer_name)     
         
     if (flag == "L"):
@@ -244,6 +239,15 @@ def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
             buffers[buffer_name]["Qj"] = qj
             buffers[buffer_name]["A"] = immediate
     elif (flag == "S"):
+        if (rd):
+            if (pull_qi_from_register(rd) in (0, '0')):
+                vk = pull_value_from_register(rd)
+                qk = 0
+            else:
+                vk = '-'
+                qk = pull_qi_from_register(rd)
+        
+        
         buffers = context.store_buffers
         buffers[buffer_name]["time"] = context.store_latency
         buffers[buffer_name]["op"] = opcode
@@ -256,6 +260,12 @@ def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
             buffers[buffer_name]["Vj"] = '-'
             buffers[buffer_name]["Qj"] = qj
             buffers[buffer_name]["A"] = immediate
+        if qk == 0:
+            buffers[buffer_name]["Vk"] = vk
+            buffers[buffer_name]["Qk"] = 0
+        else:
+            buffers[buffer_name]["Vk"] = '-'
+            buffers[buffer_name]["Qk"] = qk
             
     print(f"Issued Load/Store instruction to buffer {buffer_name}: {rd}, {rs}, {immediate}, {address}")
     return 0

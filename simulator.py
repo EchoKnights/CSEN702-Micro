@@ -3,6 +3,7 @@ import fetch
 import execute
 import cycles
 import CDB
+import cache
 
 
 fetch.set_in_register('R1', 0, 10)

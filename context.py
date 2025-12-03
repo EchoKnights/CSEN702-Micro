@@ -1,3 +1,5 @@
+import numpy
+
 isa = {
     'LW': 1,
     'LD': 2,
@@ -38,11 +40,12 @@ pc = 0
 clock_cycle = 0
 single_word_size = 4
 double_word_size = 8
-cache_size = 16
-block_size = 4
+cache_size = 64
+block_size = 8
 cache_lines = cache_size // block_size
 cache_hit_latency = 1
 cache_miss_penalty = 10
+data_memory_size = 4096
 
 fp_add_latency = 2
 fp_mult_latency = 10
@@ -53,11 +56,13 @@ add_latency = 1
 
 instruction_memory = []
 data_memory = []
+cache = {}
 
-tag = 0
-index = 0
-offset = 0
+address_size = numpy.log2(data_memory_size).astype(int)
+index = numpy.log2(cache_lines).astype(int)
+block_offset = numpy.log2(block_size).astype(int)
 valid_bit = 0
+tag = address_size - (index + block_offset)
 
 rs = 0
 rt = 0
@@ -110,15 +115,22 @@ def open_instruction_file(file_path):
         instructions = [line.strip() for line in file if line.strip()]
     return instructions
 
-def initialize_data_memory(size=None):
+def initialize_data_memory(data_memory_size=4096, cache_size=64, block_size=8):
     global data_memory
-    if size is None:
-        num_cache_blocks = cache_size // block_size
-        memory_blocks = num_cache_blocks * 16
-        size = memory_blocks * block_size
+    global cache
     
-    data_memory = [0] * size
-    print(f"Data memory initialized: {size} bytes")
+    cache_lines = cache_size // block_size
+    cache = {}
+    for i in range(cache_lines):
+        cache[i] = {
+            'Set': i,
+            "valid": 0,
+            "tag": None,
+            "data": ''
+        }
+        
+    
+    print(f"Data memory initialized: {data_memory_size} bytes")
     print(f"Cache configuration: {cache_size} bytes, {block_size} bytes per block")
     print(f"Number of cache blocks: {cache_size // block_size}")
 

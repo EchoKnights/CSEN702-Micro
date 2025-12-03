@@ -253,7 +253,7 @@ def writeback_cycle():
         name, station = Result_Queue[0]
         
         if name.startswith('S'):
-            fetch.write_to_memory(station, CDB.CDB['value'])
+            execute.write_to_memory(station, CDB.CDB['value'])
             print(f"Store buffer {name} has written and is now free.")
             Clear_Queue.append((name, station))
             Result_Queue.remove((name, station))

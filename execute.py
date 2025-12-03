@@ -1,5 +1,6 @@
 import context
 import fetch
+import cache
 
             
 def execute_instruction(name, station):
@@ -26,18 +27,27 @@ def execute_instruction(name, station):
             res_1 = station['Qj']
             
         address = int(res_1) + int(station['A'])
-        result = fetch.get_from_memory(address)
+        if station['op'] in (23, 25):
+            print(f'Load Double from address {address}')
+            result = get_from_memory(address, 8)
+        else:
+            print(f'Load Single from address {address}')
+            result = get_from_memory(address, 4)
         return result
     elif name[0] == 'S':
         print (f'Executing Store instruction at station {name}')
-        if station['Qj'] in (0, '0'):
-            res_1 = station['Vj']
+        if station['Qk'] in (0, '0'):
+            res_1 = station['Vk']
         else: 
-            res_1 = station['Qj']
+            res_1 = station['Qk']
+            
+        if station['Qj'] in (0, '0'):
+            res_2 = station['Vj']
+        else: 
+            res_2 = station['Qj']
             
         address = int(res_1) + int(station['A'])
-        print(address)
-        return address
+        return write_to_memory(address, res_2)
     elif station['op'] in (26, 27):
         print (f"Executing Loop instruction at station {name}")
         if (station['Qj'] in (0, '0')):
@@ -124,3 +134,13 @@ def compute_loopback_address(label):
     else:
         print(f"Error: Label '{label}' not found.")
         return 0
+    
+def get_from_memory(address, size):
+    res = cache.search_cache(address, size)
+    if res is None:
+        cache.load_into_cache(address)
+        res = cache.search_cache(address, size)
+    return res
+
+def write_to_memory(address, value):
+    return cache.write_into_cache(address, value, len(value)//8)
