@@ -1,6 +1,7 @@
 import sys
 import os
 import numpy as _np
+import tempfile
 
 import context
 import cycles
@@ -15,7 +16,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QGridLayout,
     QGroupBox, QTabWidget, QTableWidget, QTableWidgetItem,
     QPushButton, QLabel, QLineEdit, QFileDialog, QSpinBox,
-    QFormLayout, QMessageBox, QAbstractItemView
+    QFormLayout, QMessageBox, QAbstractItemView, QCheckBox,
+    QComboBox, QPlainTextEdit, QDialog, QDialogButtonBox
 )
 
 def reset_instruction_stats():
@@ -74,6 +76,156 @@ def simulation_done():
             all_mults_free and all_fp_mults_free and all_loads_free and
             all_stores_free and queues_empty)
 
+class InstructionBuilderDialog(QDialog):
+    def __init__(self, parent=None, existing_instructions=None):
+        super().__init__(parent)
+        self.setWindowTitle("Custom Instruction Builder")
+        self.resize(600, 400)
+
+        self.custom_instructions = list(existing_instructions or [])
+
+        layout = QVBoxLayout(self)
+
+        # --- Builder controls ---
+        form = QFormLayout()
+        layout.addLayout(form)
+
+        # Opcode
+        self.cb_opcode = QComboBox()
+        self.cb_opcode.addItems([
+            "DADDI", "DSUBI",
+            "ADD.D", "ADD.S", "SUB.D", "SUB.S",
+            "MUL.D", "MUL.S", "DIV.D", "DIV.S",
+            "LW", "LD", "L.S", "L.D",
+            "SW", "SD", "S.S", "S.D",
+            "BNE", "BEQ",
+        ])
+        self.cb_opcode.currentTextChanged.connect(self.on_opcode_changed)
+        form.addRow("Opcode", self.cb_opcode)
+
+        # Generic operand widgets
+        self.cb_rd = QComboBox()
+        self.cb_rs = QComboBox()
+        self.cb_rt = QComboBox()
+        self.cb_base = QComboBox()
+        self.sp_imm = QSpinBox()
+        self.sp_imm.setRange(-10_000, 10_000)
+        self.le_branch_target = QLineEdit("0")
+
+        def fill_int_regs(cb):
+            cb.clear()
+            for i in range(32):
+                cb.addItem(f"R{i}")
+
+        def fill_fp_regs(cb):
+            cb.clear()
+            for i in range(32):
+                cb.addItem(f"F{i}")
+
+        fill_fp_regs(self.cb_rd)
+        fill_fp_regs(self.cb_rs)
+        fill_fp_regs(self.cb_rt)
+        fill_int_regs(self.cb_base)
+
+        form.addRow("Dest (Fd/Rt)", self.cb_rd)
+        form.addRow("Src1 (Fs/Rs)", self.cb_rs)
+        form.addRow("Src2 (Ft/Rt)", self.cb_rt)
+        form.addRow("Base (R)", self.cb_base)
+        form.addRow("Offset / Imm", self.sp_imm)
+        form.addRow("Branch target", self.le_branch_target)
+
+        # Buttons (inside dialog)
+        btn_row = QHBoxLayout()
+        self.btn_add_instr = QPushButton("Add instruction")
+        self.btn_clear_instr = QPushButton("Clear list")
+        self.btn_add_instr.clicked.connect(self.on_add_custom_instruction)
+        self.btn_clear_instr.clicked.connect(self.on_clear_custom_instructions)
+        btn_row.addWidget(self.btn_add_instr)
+        btn_row.addWidget(self.btn_clear_instr)
+        btn_row.addStretch(1)
+        layout.addLayout(btn_row)
+
+        # Text area showing list
+        self.txt_custom_instr = QPlainTextEdit()
+        self.txt_custom_instr.setReadOnly(True)
+        layout.addWidget(QLabel("Current custom instruction list:"))
+        layout.addWidget(self.txt_custom_instr, stretch=1)
+
+        # Fill text area with existing list
+        if self.custom_instructions:
+            self.txt_custom_instr.setPlainText("\n".join(self.custom_instructions))
+
+        # OK / Cancel
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.on_opcode_changed(self.cb_opcode.currentText())
+
+    # ---------- dialog logic ----------
+
+    def on_opcode_changed(self, opcode: str):
+        for w in (self.cb_rd, self.cb_rs, self.cb_rt,
+                  self.cb_base, self.sp_imm, self.le_branch_target):
+            w.setEnabled(True)
+
+        if opcode in {"ADD.D", "ADD.S", "SUB.D", "SUB.S",
+                      "MUL.D", "MUL.S", "DIV.D", "DIV.S"}:
+            self.cb_base.setEnabled(False)
+            self.sp_imm.setEnabled(False)
+            self.le_branch_target.setEnabled(False)
+
+        elif opcode in {"DADDI", "DSUBI"}:
+            self.cb_rt.setEnabled(False)
+            self.cb_base.setEnabled(False)
+            self.sp_imm.setEnabled(True)
+            self.le_branch_target.setEnabled(False)
+
+        elif opcode in {"LW", "LD", "L.S", "L.D", "SW", "SD", "S.S", "S.D"}:
+            self.cb_rs.setEnabled(False)
+            self.cb_rt.setEnabled(False)
+            self.cb_base.setEnabled(True)
+            self.sp_imm.setEnabled(True)
+            self.le_branch_target.setEnabled(False)
+
+        elif opcode in {"BNE", "BEQ"}:
+            self.cb_rd.setEnabled(False)
+            self.cb_base.setEnabled(False)
+            self.sp_imm.setEnabled(False)
+            self.le_branch_target.setEnabled(True)
+
+    def on_add_custom_instruction(self):
+        opcode = self.cb_opcode.currentText()
+        imm = self.sp_imm.value()
+        rd = self.cb_rd.currentText()
+        rs = self.cb_rs.currentText()
+        rt = self.cb_rt.currentText()
+        base = self.cb_base.currentText()
+        target = self.le_branch_target.text().strip()
+
+        if opcode in {"ADD.D", "ADD.S", "SUB.D", "SUB.S",
+                      "MUL.D", "MUL.S", "DIV.D", "DIV.S"}:
+            line = f"{opcode} {rd}, {rs}, {rt}"
+        elif opcode in {"DADDI", "DSUBI"}:
+            line = f"{opcode} {rd}, {rs}, {imm}"
+        elif opcode in {"LW", "LD", "L.S", "L.D",
+                        "SW", "SD", "S.S", "S.D"}:
+            line = f"{opcode} {rd}, {imm}({base})"
+        elif opcode in {"BNE", "BEQ"}:
+            line = f"{opcode} {rs}, {rt}, {target}"
+        else:
+            line = opcode
+
+        self.custom_instructions.append(line)
+        self.txt_custom_instr.appendPlainText(line)
+
+    def on_clear_custom_instructions(self):
+        self.custom_instructions.clear()
+        self.txt_custom_instr.clear()
+
+    def get_instructions(self):
+        return self.custom_instructions
 
 # ---------------------------
 # Main Window
@@ -91,6 +243,9 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QVBoxLayout(central)
+        
+        self.custom_instr_path = None
+        self.custom_instructions = []
 
         # Top: configuration + control bar
         config_group = self.create_config_group()
@@ -133,7 +288,17 @@ class MainWindow(QMainWindow):
         file_layout.addWidget(self.instr_path_edit, stretch=1)
         file_layout.addWidget(btn_browse)
         layout.addLayout(file_layout, 0, 0, 1, 2)
+
+        custom_row = QHBoxLayout()
+        self.chk_use_custom = QCheckBox("Use custom instruction list (if defined)")
+        btn_edit_custom = QPushButton("Edit custom instructions…")
+        btn_edit_custom.clicked.connect(self.on_edit_custom_instructions)
+        custom_row.addWidget(self.chk_use_custom)
+        custom_row.addWidget(btn_edit_custom)
+        custom_row.addStretch(1)
+        layout.addLayout(custom_row, 1, 0, 1, 2)
         
+
         # Middle: latencies
         lat_group = QGroupBox("Latencies (cycles)")
         lat_form = QFormLayout(lat_group)
@@ -169,7 +334,7 @@ class MainWindow(QMainWindow):
         lat_form.addRow("STORE latency", self.sp_store_lat)
         lat_form.addRow("INT ADD (DADDI/DSUBI)", self.sp_add_lat)
 
-        layout.addWidget(lat_group, 1, 0)
+        layout.addWidget(lat_group, 2, 0)
 
         # Right: cache / memory
         cache_group = QGroupBox("Stations / Cache / Memory")
@@ -240,14 +405,19 @@ class MainWindow(QMainWindow):
         cache_form.addRow("Cache hit latency", self.sp_cache_hit)
         cache_form.addRow("Cache miss penalty", self.sp_cache_miss)
 
-        layout.addWidget(cache_group, 1, 1)
+        layout.addWidget(cache_group, 2, 1)
 
         # Bottom: initialize button
         self.btn_init = QPushButton("Initialize Simulator")
         self.btn_init.clicked.connect(self.on_initialize_clicked)
-        layout.addWidget(self.btn_init, 2, 0, 1, 2)
+        layout.addWidget(self.btn_init, 3, 0, 1, 2)
 
         return group
+
+    def on_edit_custom_instructions(self):
+        dlg = InstructionBuilderDialog(self, self.custom_instructions)
+        if dlg.exec() == QDialog.Accepted:
+            self.custom_instructions = dlg.get_instructions()
 
     def on_browse_file(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -255,6 +425,23 @@ class MainWindow(QMainWindow):
         )
         if path:
             self.instr_path_edit.setText(path)
+            
+    def get_instruction_file_path(self) -> str:
+        # Custom list mode
+        if self.chk_use_custom.isChecked() and self.custom_instructions:
+            # Create / overwrite temp file
+            tmp_dir = tempfile.gettempdir()
+            self.custom_instr_path = os.path.join(
+                tmp_dir, "tomasulo_custom_instructions.txt"
+            )
+            with open(self.custom_instr_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(self.custom_instructions) + "\n")
+            return self.custom_instr_path
+
+        # Normal file mode
+        return self.instr_path_edit.text().strip()
+
+
 
     # ------------- Control bar -------------
 
@@ -499,6 +686,8 @@ class MainWindow(QMainWindow):
         context.block_offset = _np.log2(context.block_size).astype(int)
         context.tag = context.address_size - (context.index + context.block_offset)
 
+
+        path = self.get_instruction_file_path()
         instructions = context.open_instruction_file(path)
         context.load_instruction_memory(instructions)
         context.initialize_data_memory(
@@ -561,7 +750,23 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Done", "Simulation completed (pipelines empty, no more instructions).")
 
     def on_reset_clicked(self):
-        # Reset is basically "re-initialize with same config & file"
+        # Clear custom list + checkbox
+        self.custom_instructions.clear()
+        print("Cleared custom instructions.")
+        if hasattr(self, "chk_use_custom"):
+            self.chk_use_custom.setChecked(False)
+            print("Unchecked custom instructions checkbox.")
+
+        # Remove temp file if it exists
+        if self.custom_instr_path and os.path.exists(self.custom_instr_path):
+            try:
+                os.remove(self.custom_instr_path)
+                print(f"Removed temporary custom instruction file: {self.custom_instr_path}")
+            except OSError:
+                pass
+            self.custom_instr_path = None
+
+        # Re-initialize with same config
         self.on_initialize_clicked()
 
     # ------------- Update UI -------------
