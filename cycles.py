@@ -86,6 +86,7 @@ def fetch_cycle():
         and (name, station) not in Result_Queue \
         and (name, station) not in Clear_Queue:
             TBE_Queue.append((name, station))
+            gui.update_instruction_issue(name, context.clock_cycle)
             print(f'Added {name} to To Be Executed Queue')
             
     for name, station in context.mult_reservation_stations.items():
@@ -96,6 +97,7 @@ def fetch_cycle():
         and (name, station) not in Result_Queue \
         and (name, station) not in Clear_Queue:
             TBE_Queue.append((name, station))
+            gui.update_instruction_issue(name, context.clock_cycle)
             print(f'Added {name} to To Be Executed Queue')   
     
     for name, station in context.fp_adder_reservation_stations.items():
@@ -106,6 +108,7 @@ def fetch_cycle():
         and (name, station) not in Result_Queue \
         and (name, station) not in Clear_Queue:
             TBE_Queue.append((name, station))
+            gui.update_instruction_issue(name, context.clock_cycle)
             print(f'Added {name} to To Be Executed Queue')
     
     for name, station in context.fp_mult_reservation_stations.items():
@@ -116,6 +119,7 @@ def fetch_cycle():
         and (name, station) not in Result_Queue \
         and (name, station) not in Clear_Queue:
             TBE_Queue.append((name, station))
+            gui.update_instruction_issue(name, context.clock_cycle)
             print(f'Added {name} to To Be Executed Queue')
             
     for name, station in context.load_buffers.items():
@@ -126,6 +130,7 @@ def fetch_cycle():
         and (name, station) not in Result_Queue \
         and (name, station) not in Clear_Queue:
             TBE_Queue.append((name, station))
+            gui.update_instruction_issue(name, context.clock_cycle)
             print(f'Added {name} to To Be Executed Queue')
             
     for name, station in context.store_buffers.items():
@@ -136,6 +141,7 @@ def fetch_cycle():
         and (name, station) not in Result_Queue \
         and (name, station) not in Clear_Queue:
             TBE_Queue.append((name, station))
+            gui.update_instruction_issue(name, context.clock_cycle)
             print(f'Added {name} to To Be Executed Queue')
             
     
@@ -171,6 +177,8 @@ def execute_cycle():
             if station['Qj'] in (0, '0') and station['Qk'] in (0, '0'):
                 Execute_Queue.append((name, station))
                 TBE_Queue.remove((name, station))
+                if HAS_GUI and 'inst_index' in station:
+                    gui.update_instruction_exec_start(station['inst_index'], context.clock_cycle)
             else:
                 Waiting_Queue.append((name, station))
                 TBE_Queue.remove((name, station))
@@ -345,3 +353,5 @@ def writeback_cycle():
                 gui.update_instruction_writeback(station['inst_index'], context.clock_cycle)
             Clear_Queue.append((name, station))
             Result_Queue.remove((name, station))
+    
+    print_state()

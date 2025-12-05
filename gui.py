@@ -1,14 +1,6 @@
 import sys
 import os
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget,
-    QVBoxLayout, QHBoxLayout, QGridLayout,
-    QGroupBox, QTabWidget, QTableWidget, QTableWidgetItem,
-    QPushButton, QLabel, QLineEdit, QFileDialog, QSpinBox,
-    QFormLayout, QMessageBox, QAbstractItemView   # <-- add this
-)
-
-from PySide6.QtCore import Qt
+import numpy as _np
 
 import context
 import cycles
@@ -17,29 +9,19 @@ import execute
 import CDB
 import cache
 
-# ---------------------------
-# Simple per-instruction stats
-# ---------------------------
-
-# One entry per instruction:
-# {
-#   "index": int,
-#   "text": str,
-#   "issue": int | None,
-#   "exec_start": int | None,
-#   "exec_cycles": int,
-#   "exec_end": int | None,
-#   "writeback": int | None,
-# }
-instruction_stats = []
-
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget,
+    QVBoxLayout, QHBoxLayout, QGridLayout,
+    QGroupBox, QTabWidget, QTableWidget, QTableWidgetItem,
+    QPushButton, QLabel, QLineEdit, QFileDialog, QSpinBox,
+    QFormLayout, QMessageBox, QAbstractItemView
+)
 
 def reset_instruction_stats():
-    """Create empty stats for each instruction currently in instruction_memory."""
-    global instruction_stats
-    instruction_stats = []
+    context.instruction_stats = []
     for idx, inst in enumerate(context.instruction_memory):
-        instruction_stats.append({
+        context.instruction_stats.append({
             "index": idx,
             "text": inst,
             "issue": None,
@@ -52,9 +34,10 @@ def reset_instruction_stats():
 
 def update_instruction_stat(inst_index, field, value):
     """Update a specific field for an instruction stat."""
-    global instruction_stats
-    if 0 <= inst_index < len(instruction_stats):
-        instruction_stats[inst_index][field] = value
+    for inst in context.instruction_stats:
+        if inst["index"] == inst_index:
+            inst[field] = value
+            break
 
 def update_instruction_issue(inst_index, cycle):
     """Called when instruction is issued to a reservation station."""
@@ -73,15 +56,7 @@ def update_instruction_writeback(inst_index, cycle):
     update_instruction_stat(inst_index, "writeback", cycle)
 
 
-# ---------------------------
-# Done-condition (copied from simulator.py)
-# ---------------------------
-
 def simulation_done():
-    """
-    Same logic as simulator.done(), but kept local so we don't import simulator
-    (it has a while True loop). :contentReference[oaicite:8]{index=8}
-    """
     no_more_insts = context.pc >= len(context.instruction_memory)
 
     all_adders_free = all(not st["busy"] for st in context.fp_adder_reservation_stations.values())
@@ -308,15 +283,16 @@ class MainWindow(QMainWindow):
         self.tbl_gpr = QTableWidget()
         self.tbl_gpr.setColumnCount(3)
         self.tbl_gpr.setHorizontalHeaderLabels(["Reg", "Value", "Qi"])
-        self.tbl_gpr.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_gpr.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.SelectedClicked)
         self.tbl_gpr.horizontalHeader().setStretchLastSection(True)
+        self.tbl_gpr.itemChanged.connect(lambda item: self.on_register_value_changed(item, "general"))
 
         self.tbl_fpr = QTableWidget()
         self.tbl_fpr.setColumnCount(3)
         self.tbl_fpr.setHorizontalHeaderLabels(["Reg", "Value", "Qi"])
-        self.tbl_fpr.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_fpr.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.SelectedClicked)
         self.tbl_fpr.horizontalHeader().setStretchLastSection(True)
-
+        self.tbl_fpr.itemChanged.connect(lambda item: self.on_register_value_changed(item, "fp"))
 
         tabs.addTab(self.tbl_gpr, "General Registers (R)")
         tabs.addTab(self.tbl_fpr, "FP Registers (F)")
@@ -478,15 +454,12 @@ class MainWindow(QMainWindow):
         context.cache_hit_latency = self.sp_cache_hit.value()
         context.cache_miss_penalty = self.sp_cache_miss.value()
 
-        # Recompute address_size, cache_lines, etc. :contentReference[oaicite:9]{index=9}
-        import numpy as _np
         context.cache_lines = context.cache_size // context.block_size
         context.address_size = _np.log2(context.data_memory_size).astype(int)
         context.index = _np.log2(context.cache_lines).astype(int)
         context.block_offset = _np.log2(context.block_size).astype(int)
         context.tag = context.address_size - (context.index + context.block_offset)
 
-        # Manually do what initialize_simulator() does, but with our parameters. :contentReference[oaicite:10]{index=10}
         instructions = context.open_instruction_file(path)
         context.load_instruction_memory(instructions)
         context.initialize_data_memory(
@@ -509,6 +482,9 @@ class MainWindow(QMainWindow):
         CDB.CDB = {}
 
         reset_instruction_stats()
+        
+        cache.preload_cache_values()
+        fetch.preload_register_values()
 
         self.sim_initialized = True
         self.btn_next.setEnabled(True)
@@ -557,9 +533,8 @@ class MainWindow(QMainWindow):
         self.lbl_stall.setText(f"STALL: {context.STALL}")
 
     def update_instruction_table(self):
-        global instruction_stats
-        self.tbl_instructions.setRowCount(len(instruction_stats))
-        for row, info in enumerate(instruction_stats):
+        self.tbl_instructions.setRowCount(len(context.instruction_stats))
+        for row, info in enumerate(context.instruction_stats):
             vals = [
                 info["index"],
                 info["text"],
@@ -575,23 +550,82 @@ class MainWindow(QMainWindow):
         self.tbl_instructions.resizeColumnsToContents()
 
     def update_register_tables(self):
+        # Temporarily disconnect signals to avoid triggering itemChanged during update
+        try:
+            self.tbl_gpr.itemChanged.disconnect()
+            self.tbl_fpr.itemChanged.disconnect()
+        except:
+            pass
+        
         # General registers
         gregs = context.general_registers
         self.tbl_gpr.setRowCount(len(gregs))
         for row, (name, reg) in enumerate(sorted(gregs.items())):
-            self.tbl_gpr.setItem(row, 0, QTableWidgetItem(name))
-            self.tbl_gpr.setItem(row, 1, QTableWidgetItem(str(reg["Value"])))
-            self.tbl_gpr.setItem(row, 2, QTableWidgetItem(str(reg["Qi"])))
+            # Column 0: Reg name (read-only)
+            item_name = QTableWidgetItem(name)
+            item_name.setFlags(item_name.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.tbl_gpr.setItem(row, 0, item_name)
+            
+            # Column 1: Value (editable)
+            item_value = QTableWidgetItem(str(reg["Value"]))
+            self.tbl_gpr.setItem(row, 1, item_value)
+            
+            # Column 2: Qi (read-only)
+            item_qi = QTableWidgetItem(str(reg["Qi"]))
+            item_qi.setFlags(item_qi.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.tbl_gpr.setItem(row, 2, item_qi)
         self.tbl_gpr.resizeColumnsToContents()
 
         # FP registers
         fregs = context.floating_point_registers
         self.tbl_fpr.setRowCount(len(fregs))
         for row, (name, reg) in enumerate(sorted(fregs.items())):
-            self.tbl_fpr.setItem(row, 0, QTableWidgetItem(name))
-            self.tbl_fpr.setItem(row, 1, QTableWidgetItem(str(reg["Value"])))
-            self.tbl_fpr.setItem(row, 2, QTableWidgetItem(str(reg["Qi"])))
+            # Column 0: Reg name (read-only)
+            item_name = QTableWidgetItem(name)
+            item_name.setFlags(item_name.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.tbl_fpr.setItem(row, 0, item_name)
+            
+            # Column 1: Value (editable)
+            item_value = QTableWidgetItem(str(reg["Value"]))
+            self.tbl_fpr.setItem(row, 1, item_value)
+            
+            # Column 2: Qi (read-only)
+            item_qi = QTableWidgetItem(str(reg["Qi"]))
+            item_qi.setFlags(item_qi.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.tbl_fpr.setItem(row, 2, item_qi)
         self.tbl_fpr.resizeColumnsToContents()
+        
+        # Reconnect signals
+        self.tbl_gpr.itemChanged.connect(lambda item: self.on_register_value_changed(item, "general"))
+        self.tbl_fpr.itemChanged.connect(lambda item: self.on_register_value_changed(item, "fp"))
+
+    def on_register_value_changed(self, item, reg_type):
+        """Handle when user edits a register value."""
+        if item.column() != 1:  # Only column 1 (Value) should be editable
+            return
+        
+        row = item.row()
+        new_value_str = item.text()
+        
+        try:
+            # Try to convert to appropriate numeric type
+            if '.' in new_value_str:
+                new_value = float(new_value_str)
+            else:
+                new_value = int(new_value_str)
+            
+            # Get register name from column 0
+            if reg_type == "general":
+                reg_name = self.tbl_gpr.item(row, 0).text()
+                context.general_registers[reg_name]["Value"] = new_value
+            else:  # fp
+                reg_name = self.tbl_fpr.item(row, 0).text()
+                context.floating_point_registers[reg_name]["Value"] = new_value
+                
+        except ValueError:
+            QMessageBox.warning(self, "Invalid Value", f"'{new_value_str}' is not a valid numeric value.")
+            # Restore original value
+            self.update_register_tables()
 
     def update_rs_tables(self):
         # Helper to fill from dict[name -> station]

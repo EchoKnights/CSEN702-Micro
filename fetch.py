@@ -94,11 +94,6 @@ def decode_instruction(instruction):
                 address = str(int(immediate) + int(rs_val))
             else:
                 immediate = offset_part.strip()
-                
-        if (5 <= opcode):
-            temp = rs
-            rs = rd
-            rd = temp 
             
         val_rs = pull_value_from_register(rs)
         val_rt = pull_value_from_register(rt)
@@ -487,3 +482,19 @@ def write_control_instruction(op, rs, rt, immediate, name, inst_index):
     except:
         pass
     return 0
+
+
+# register stuff
+
+def preload_register_values():
+    set_in_register('R1', 0, 10)
+    set_in_register('R3', 0, 12)
+    set_in_register('R10', 0, 77)
+    set_in_register('R26', 0, 30)
+    set_in_register('R27', 0, 20)
+
+    set_in_register('F1', 0, 5.5)
+    set_in_register('F2', 0, 2.0)
+    set_in_register('F3', 1, "A3")
+    set_in_register('F10', 0, 10.0)
+    set_in_register('F11', 0, 17.0)

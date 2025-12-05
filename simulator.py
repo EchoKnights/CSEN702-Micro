@@ -7,7 +7,6 @@ import cache
 
 
 fetch.set_in_register('R1', 0, 10)
-fetch.set_in_register('R2', 0, 5)
 fetch.set_in_register('R3', 0, 12)
 fetch.set_in_register('R10', 0, 77)
 fetch.set_in_register('R26', 0, 30)

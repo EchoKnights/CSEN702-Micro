@@ -65,8 +65,8 @@ def execute_instruction(name, station):
             return None
         
         try:
-            res_1 = float(station['Vj']) if station['Vj'] != '-' else 0  # Base address
-            res_2 = float(station['Vk']) if station['Vk'] != '-' else 0  # Value to store
+            res_1 = float(station['Vj']) if station['Vj'] != '-' else 0
+            res_2 = float(station['Vk']) if station['Vk'] != '-' else 0
             
             base_addr = int(res_1) if res_1 != '-' else 0
             offset = int(station['A']) if station['A'] != '' and station['A'] != '-' else 0
@@ -87,7 +87,7 @@ def execute_instruction(name, station):
             else:
                 print(f'Store Single to address {address}')
                 write_to_memory(address, res_2, 4)
-            return None  # Stores don't return a value
+            return None
         except (ValueError, TypeError, KeyError) as e:
             print(f"Error in store instruction execution: {e}")
             return None

@@ -63,7 +63,7 @@ def load_into_cache(address):
     index = binary_address[context.tag:context.tag + context.index]
     block_offset = binary_address[context.tag + context.index:]
 
-    set_index = convert_to_decimal(index)
+    set_index = int(index, 2)
 
     if set_index < 0 or set_index >= len(context.cache):
         print(f"Error: Invalid cache set index {set_index} for address {address}")
@@ -76,7 +76,6 @@ def load_into_cache(address):
         if addr < len(context.data_memory):
             block_data.append(context.data_memory[addr])
         else:
-            # Out of bounds - pad with zeros
             block_data.append('00000000')
 
     context.cache[set_index]["valid"] = 1
@@ -86,17 +85,13 @@ def load_into_cache(address):
     print(f"Loaded address {address} (block {block_base}) into cache line {set_index}")
 
 def check_cache_status(address):
-    """
-    Check if address is in cache (hit) or not (miss).
-    Returns: 'hit' or 'miss'
-    """
     binary_address = convert_to_binary(address)
     if binary_address is None:
         return 'miss'
 
     tag = binary_address[:context.tag]
     index = binary_address[context.tag:context.tag + context.index]
-    set_index = convert_to_decimal(index)
+    set_index = int(index, 2)
 
     if set_index < 0 or set_index >= len(context.cache):
         return 'miss'
@@ -169,8 +164,8 @@ def write_into_cache(address, value, num_bytes=4):
     index = binary_address[context.tag:context.tag + context.index]
     block_offset = binary_address[context.tag + context.index:]
 
-    set_index = convert_to_decimal(index)
-    offset = convert_to_decimal(block_offset)
+    set_index = int(index, 2)
+    offset    = int(block_offset, 2)
 
     for i in range(num_bytes):
         if address + i < len(context.data_memory):
@@ -191,3 +186,25 @@ def write_into_cache(address, value, num_bytes=4):
         for i in range(num_bytes):
             if offset + i < len(line["data"]):
                 line["data"][offset + i] = data_binary[i * 8:(i + 1) * 8]
+                
+def preload_cache_values():
+    store_to_data_memory(0, format(42, '064b'), flag='D')
+    store_to_data_memory(8, format(100, '064b'), flag='D')
+
+    print("Preloading cache...")
+    load_into_cache(0)
+    load_into_cache(8)
+
+    print("\nVerifying preloaded values:")
+    val0 = search_cache(0, 8)
+    val8 = search_cache(8, 8)
+
+    if val0 is not None:
+        print(f"Address 0: {convert_to_decimal(val0)} (expected: 42)")
+    else:
+        print("Cache miss while verifying address 0")
+
+    if val8 is not None:
+        print(f"Address 8: {convert_to_decimal(val8)} (expected: 100)")
+    else:
+        print("Cache miss while verifying address 8")

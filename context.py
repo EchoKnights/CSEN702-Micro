@@ -47,6 +47,7 @@ isa = {
     'NOP': 0
 }
 
+instruction_stats = []
 
 pc = 0
 clock_cycle = 0
@@ -70,9 +71,13 @@ instruction_memory = []
 data_memory = []
 cache = {}
 
-address_size = numpy.log2(data_memory_size).astype(int)
-index = numpy.log2(cache_lines).astype(int)
-block_offset = numpy.log2(block_size).astype(int)
+ADDRESS_WIDTH = 32
+
+address_size = ADDRESS_WIDTH
+
+cache_lines = cache_size // block_size
+index = int(numpy.log2(cache_lines))
+block_offset = int(numpy.log2(block_size))
 valid_bit = 0
 tag = address_size - (index + block_offset)
 
