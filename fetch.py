@@ -51,8 +51,10 @@ def decode_instruction(instruction):
     
     val_rs = 0
     val_rt = 0
+        
+    instruction_normalized = instruction.replace('. ', '.').strip()
     
-    parts = instruction.split()
+    parts = instruction_normalized.split()
     if (parts[0].endswith(':')):
         label = parts[0][:-1]
         labels[label] = context.pc
@@ -60,7 +62,19 @@ def decode_instruction(instruction):
         
     print(f"Labels: {labels}")
 
-    opcode = context.isa.get(parts[0], -1)
+    inst_name = parts[0] if len(parts) > 0 else ""
+    opcode = context.isa.get(inst_name, -1)
+    
+    if opcode == -1 and '.' in inst_name:
+        alt_name = inst_name.replace('.', '. ')
+        parts_alt = alt_name.split()
+        if len(parts_alt) > 1:
+            alt_name2 = parts_alt[0] + parts_alt[1]
+            opcode = context.isa.get(alt_name2, -1)
+            if opcode != -1:
+                parts = [alt_name2] + parts[1:]
+                inst_name = alt_name2
+    
     operands = parts[1:] if len(parts) > 1 else []
 
     if (opcode == -1):
@@ -165,28 +179,30 @@ def write_to_reservation_station(payload):
     address = payload[5]
     name = payload[6]
     
+    inst_index = context.pc
+    
     print(f"Writing to reservation station with payload: {payload}")
     print({"opcode": opcode, "rs": rs, "rt": rt, "rd": rd, "immediate": immediate, "address": address})
     
     if opcode in range(0, 9):
         print("Writing to Load/Store Buffer")
-        return write_to_ls_st_buffer(opcode, rd, rs, immediate, address)
+        return write_to_ls_st_buffer(opcode, rd, rs, immediate, address, inst_index)
     elif opcode in range(9, 15):
         print("Writing to Integer Arithmetic Reservation Station")
-        return write_to_integer_reservation_station(opcode, rd, rs, rt, immediate)
+        return write_to_integer_reservation_station(opcode, rd, rs, rt, immediate, inst_index)
     elif opcode in range(15, 23):
         print("Writing to Floating-Point Arithmetic Reservation Station")
-        return write_to_fp_reservation_station(opcode, rd, rs, rt)
+        return write_to_fp_reservation_station(opcode, rd, rs, rt, inst_index)
     elif opcode in range(23, 28):
         print("Handling Control Instruction")
-        write_control_instruction(opcode, rs, rt, immediate, name)
+        write_control_instruction(opcode, rs, rt, immediate, name, inst_index)
         context.stall_pipeline()
         return 0
     else:
         print("Unknown opcode; cannot write to reservation station")
         return None
         
-def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
+def write_to_ls_st_buffer(opcode, rd, rs, immediate, address, inst_index):
     buffer_name = None
     flag = ""
     qk = 0
@@ -230,10 +246,11 @@ def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
         buffers[buffer_name]["time"] = context.load_latency
         buffers[buffer_name]["op"] = opcode
         buffers[buffer_name]['busy'] = 1
+        buffers[buffer_name]["inst_index"] = inst_index
         if qj == 0:
             buffers[buffer_name]["Vj"] = vj
             buffers[buffer_name]["Qj"] = 0
-            buffers[buffer_name]["A"] = address
+            buffers[buffer_name]["A"] = immediate
         else:
             buffers[buffer_name]["Vj"] = '-'
             buffers[buffer_name]["Qj"] = qj
@@ -252,10 +269,11 @@ def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
         buffers[buffer_name]["time"] = context.store_latency
         buffers[buffer_name]["op"] = opcode
         buffers[buffer_name]['busy'] = 1
+        buffers[buffer_name]["inst_index"] = inst_index
         if qj == 0:
             buffers[buffer_name]["Vj"] = vj
             buffers[buffer_name]["Qj"] = 0
-            buffers[buffer_name]["A"] = address
+            buffers[buffer_name]["A"] = immediate
         else:
             buffers[buffer_name]["Vj"] = '-'
             buffers[buffer_name]["Qj"] = qj
@@ -268,9 +286,14 @@ def write_to_ls_st_buffer(opcode, rd, rs, immediate, address):
             buffers[buffer_name]["Qk"] = qk
             
     print(f"Issued Load/Store instruction to buffer {buffer_name}: {rd}, {rs}, {immediate}, {address}")
+    try:
+        import gui
+        gui.update_instruction_issue(inst_index, context.clock_cycle)
+    except:
+        pass
     return 0
         
-def write_to_integer_reservation_station(opcode, rd, rs, rt, immediate):
+def write_to_integer_reservation_station(opcode, rd, rs, rt, immediate, inst_index):
     if opcode in (10, 12):  # DADDI, DSUBI
         stations = context.adder_reservation_stations
         prefix = "A"
@@ -306,6 +329,7 @@ def write_to_integer_reservation_station(opcode, rd, rs, rt, immediate):
     stations[station_name]["busy"] = 1
     stations[station_name]["op"] = opcode
     stations[station_name]["A"] = immediate
+    stations[station_name]["inst_index"] = inst_index
     
     if qj == 0:
         stations[station_name]["Vj"] = vj
@@ -317,10 +341,15 @@ def write_to_integer_reservation_station(opcode, rd, rs, rt, immediate):
 
         
     print(f"Issued Integer instruction to station {station_name}: {rd}, {rs}, {immediate}")
+    try:
+        import gui
+        gui.update_instruction_issue(inst_index, context.clock_cycle)
+    except:
+        pass
     return 0
    
    
-def write_to_fp_reservation_station(opcode, rd, rs, rt):
+def write_to_fp_reservation_station(opcode, rd, rs, rt, inst_index):
     
     if opcode in range(15, 19):   # ADD.D, ADD.S, SUB.D, SUB.S
         stations = context.fp_adder_reservation_stations
@@ -372,6 +401,7 @@ def write_to_fp_reservation_station(opcode, rd, rs, rt):
     stations[station_name]["busy"] = 1
     stations[station_name]["op"] = opcode
     stations[station_name]["A"] = ""
+    stations[station_name]["inst_index"] = inst_index
 
     if qj == 0:
         stations[station_name]["Vj"] = vj
@@ -388,9 +418,15 @@ def write_to_fp_reservation_station(opcode, rd, rs, rt):
         stations[station_name]["Qk"] = qk
 
     print(f"Issued FP instruction to station {station_name}: {rd}, {rs}, {rt}")
+    # Update instruction stats
+    try:
+        import gui
+        gui.update_instruction_issue(inst_index, context.clock_cycle)
+    except:
+        pass
     return 0
 
-def write_control_instruction(op, rs, rt, immediate, name):
+def write_control_instruction(op, rs, rt, immediate, name, inst_index):
     print(f"Writing control instruction: op={op}, rs={rs}, rt={rt}, immediate={immediate}, name={name}")
     prefix = ''
     stations = {}
@@ -427,7 +463,7 @@ def write_control_instruction(op, rs, rt, immediate, name):
     stations[station_name]["busy"] = 1
     stations[station_name]["op"] = op
     stations[station_name]["A"] = name
-        
+    stations[station_name]["inst_index"] = inst_index
     stations[station_name]["time"] = 1
     
     if (pull_qi_from_register(rs) in (0, '0')):
@@ -444,4 +480,10 @@ def write_control_instruction(op, rs, rt, immediate, name):
         stations[station_name]["Qk"] = qk
         
     print(f"Issued Control instruction to station {station_name}: op={op}, rs={rs}, rt={rt}, name={name}")
+    # Update instruction stats
+    try:
+        import gui
+        gui.update_instruction_issue(inst_index, context.clock_cycle)
+    except:
+        pass
     return 0

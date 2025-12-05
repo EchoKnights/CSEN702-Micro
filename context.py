@@ -5,10 +5,14 @@ isa = {
     'LD': 2,
     'L.W': 3,
     'L.D': 4,
+    'L. W': 3,
+    'L. D': 4,
     'SW': 5,
     'SD': 6,
     'S.W': 7,
     'S.D': 8,
+    'S. W': 7,
+    'S. D': 8,
     
     'ADD': 9,
     'DADDI': 10,
@@ -25,6 +29,14 @@ isa = {
     'MUL.S': 20,
     'DIV.D': 21,
     'DIV.S': 22,
+    'ADD. D': 15,
+    'ADD. S': 16,
+    'SUB. D': 17,
+    'SUB. S': 18,
+    'MUL. D': 19,
+    'MUL. S': 20,
+    'DIV. D': 21,
+    'DIV. S': 22,
     
     'J': 23,
     'JR': 24,
@@ -119,6 +131,8 @@ def initialize_data_memory(data_memory_size=4096, cache_size=64, block_size=8):
     global data_memory
     global cache
     
+    data_memory = ['00000000'] * data_memory_size
+    
     cache_lines = cache_size // block_size
     cache = {}
     for i in range(cache_lines):
@@ -126,7 +140,7 @@ def initialize_data_memory(data_memory_size=4096, cache_size=64, block_size=8):
             'Set': i,
             "valid": 0,
             "tag": None,
-            "data": ''
+            "data": ['00000000'] * block_size
         }
         
     

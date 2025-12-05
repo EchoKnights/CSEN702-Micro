@@ -3,6 +3,13 @@ import fetch
 import execute
 import wb
 import CDB
+import cache
+
+try:
+    import gui
+    HAS_GUI = True
+except ImportError:
+    HAS_GUI = False
 
 TBE_Queue = []
 Execute_Queue = []
@@ -156,6 +163,8 @@ def execute_cycle():
         Execute_Queue.append((name, station))
         Ready_Queue.remove((name, station))
         print(f'Station {name} moved from Ready to Execute Queue')
+        if HAS_GUI and 'inst_index' in station:
+            gui.update_instruction_exec_start(station['inst_index'], context.clock_cycle)
     
     for name, station in list(TBE_Queue):
         if name.startswith('FA') or name.startswith('FM'):
@@ -166,12 +175,40 @@ def execute_cycle():
                 Waiting_Queue.append((name, station))
                 TBE_Queue.remove((name, station))
         elif name.startswith('L'):
+            if station['Qj'] in (0, '0') and station.get('A') not in (None, '', '-'):
+                try:
+                    address = int(station['Vj']) + int(station['A'])
+                    cache_status = cache.check_cache_status(address)
+                    if cache_status == 'hit':
+                        station['time'] = context.load_latency + context.cache_hit_latency
+                    else:
+                        station['time'] = context.load_latency + context.cache_miss_penalty
+                    context.load_buffers[name]['time'] = station['time']
+                except:
+                    pass
+            
             Execute_Queue.append((name, station))
             TBE_Queue.remove((name, station))
+            if HAS_GUI and 'inst_index' in station:
+                gui.update_instruction_exec_start(station['inst_index'], context.clock_cycle)
         elif name.startswith('S'):
-            if station['Qj'] == '0':
+            if station['Qj'] in (0, '0') and station['Qk'] in (0, '0'):
+                if station.get('A') not in (None, '', '-'):
+                    try:
+                        address = int(station['Vj']) + int(station['A'])
+                        cache_status = cache.check_cache_status(address)
+                        if cache_status == 'hit':
+                            station['time'] = context.store_latency + context.cache_hit_latency
+                        else:
+                            station['time'] = context.store_latency + context.cache_miss_penalty
+                        context.store_buffers[name]['time'] = station['time']
+                    except:
+                        pass
+                
                 Execute_Queue.append((name, station))
                 TBE_Queue.remove((name, station))
+                if HAS_GUI and 'inst_index' in station:
+                    gui.update_instruction_exec_start(station['inst_index'], context.clock_cycle)
             else:
                 Waiting_Queue.append((name, station))
                 TBE_Queue.remove((name, station))
@@ -180,6 +217,8 @@ def execute_cycle():
             if station['Qj'] in (0, '0') and station['Qk'] in (0, '0'):
                 Execute_Queue.append((name, station))
                 TBE_Queue.remove((name, station))
+                if HAS_GUI and 'inst_index' in station:
+                    gui.update_instruction_exec_start(station['inst_index'], context.clock_cycle)
             else:
                 Waiting_Queue.append((name, station))
                 TBE_Queue.remove((name, station))
@@ -188,6 +227,11 @@ def execute_cycle():
     for name, station in list(Execute_Queue):
         station['time'] -= 1
         print(f"Decremented time for station {name}, remaining time: {station['time']}")
+        if HAS_GUI and 'inst_index' in station:
+            if 'exec_cycles' not in station:
+                station['exec_cycles'] = 0
+            station['exec_cycles'] += 1
+            gui.update_instruction_stat(station['inst_index'], "exec_cycles", station['exec_cycles'])
         if name.startswith('FA'):
             context.fp_adder_reservation_stations[name]['time'] = station['time']
         elif name.startswith('FM'):
@@ -203,30 +247,31 @@ def execute_cycle():
         
         if station['time'] == 0:
             print(f"Station {name} has completed execution.")
+            result = execute.execute_instruction(name, station)
+            station['result'] = result
             completed.append((name, station))
             
     for name, station in completed:
         Result_Queue.append((name, station))
         Execute_Queue.remove((name, station))
-        print(f"Station {name} moved from Execute to Result Queue")
+        print(f"Station {name} moved from Execute to Result Queue with result: {station.get('result', 'None')}")
+        if HAS_GUI and 'inst_index' in station:
+            gui.update_instruction_exec_end(station['inst_index'], context.clock_cycle)
 
     for name, station in list(Waiting_Queue):
         if station['Qj'] in (0, '0') and station['Qk'] in (0, '0'):
-            Ready_Queue.append((name, station))
-            Waiting_Queue.remove((name, station))
             print(
                 f"Station {name} is now ready to execute with values "
                 f"Vj={station['Vj']}, Vk={station['Vk']}, "
                 f"Qj={station['Qj']}, Qk={station['Qk']}."
-            )        
-    print('End of Execute Cycle')
-    
-    for name, station in list(Waiting_Queue):
-        if station['Qj'] in (0, '0') and station['Qk'] in (0, '0'):
-            print(f'Station {name} is now ready to execute with values Vj={station["Vj"]}, Vk={station["Vk"]}, Qj={station["Qj"]}, Qk={station["Qk"]}.')
+            )
             Execute_Queue.append((name, station))
             print(f'Station {name} moved from Waiting to Execute Queue')
+            if HAS_GUI and 'inst_index' in station:
+                gui.update_instruction_exec_start(station['inst_index'], context.clock_cycle)
             Waiting_Queue.remove((name, station))
+        
+    print('End of Execute Cycle')
         
     
 def writeback_cycle():
@@ -246,60 +291,57 @@ def writeback_cycle():
             elif name.startswith('M'):
                 context.mult_reservation_stations[name]["busy"] = 0
         
-        print(f'Clearing Clear Queue: {Clear_Queue}')
+        print(f'Clearing Clear Queue: {[n for n, s in Clear_Queue]}')
         Clear_Queue.clear()
     
-    if Result_Queue:
-        name, station = Result_Queue[0]
+    for name, station in list(Result_Queue):
+        result = station.get('result')
         
         if name.startswith('S'):
-            execute.write_to_memory(station, CDB.CDB['value'])
-            print(f"Store buffer {name} has written and is now free.")
+            print(f"Store buffer {name} has completed and is now free.")
+            if HAS_GUI and 'inst_index' in station:
+                gui.update_instruction_writeback(station['inst_index'], context.clock_cycle)
             Clear_Queue.append((name, station))
             Result_Queue.remove((name, station))
-
-        tag = name
-        result = execute.execute_instruction(name, station)
-        print(f'Station {name} produced result: {result}')
-        CDB.Enter_CDB_Queue(tag, result)
-        CDB.write_to_CDB()
-        CDB.listen_to_CDB()
+            continue
+        
+        if station.get('op') in (26, 27):
+            print(f"Control instruction at {name} has completed.")
+            if HAS_GUI and 'inst_index' in station:
+                gui.update_instruction_writeback(station['inst_index'], context.clock_cycle)
+            Clear_Queue.append((name, station))
+            Result_Queue.remove((name, station))
+            continue
+        
+        if result is not None:
+            tag = name
+            print(f'Station {name} writing result {result} to CDB')
+            CDB.Enter_CDB_Queue(tag, result)
+            CDB.write_to_CDB()
+            CDB.listen_to_CDB()
             
-    for name, station in list(Result_Queue):
-        if name.startswith('FA'):
-            for reg_name, reg in context.floating_point_registers.items():
-                if reg["Qi"] == name:
-                    reg["Value"] = CDB.CDB['value']
-                    reg["Qi"] = "0"
+            cdb_value = CDB.CDB.get('value')
+            if cdb_value is not None:
+                if name.startswith('FA') or name.startswith('FM') or name.startswith('L'):
+                    for reg_name, reg in context.floating_point_registers.items():
+                        if reg["Qi"] == name:
+                            reg["Value"] = cdb_value
+                            reg["Qi"] = "0"
+                            print(f"Updated register {reg_name} with value {cdb_value}")
+                elif name.startswith('A') or name.startswith('M'):
+                    for reg_name, reg in context.general_registers.items():
+                        if reg["Qi"] == name:
+                            reg["Value"] = cdb_value
+                            reg["Qi"] = "0"
+                            print(f"Updated register {reg_name} with value {cdb_value}")
+                    for reg_name, reg in context.floating_point_registers.items():
+                        if reg["Qi"] == name:
+                            reg["Value"] = cdb_value
+                            reg["Qi"] = "0"
+                            print(f"Updated register {reg_name} with value {cdb_value}")
+            
             print(f"Reservation station {name} has written back and is now free.")
-            Clear_Queue.append((name, station))
-            Result_Queue.remove((name, station))
-        elif name.startswith('FM'):
-            for reg_name, reg in context.floating_point_registers.items():
-                if reg["Qi"] == name:
-                    reg["Value"] = CDB.CDB['value']
-                    reg["Qi"] = "0"
-            print(f"Reservation station {name} has written back and is now free.")
-            Clear_Queue.append((name, station))
-            print(f"Reservation station {name} has written to Clear Queue.")
-            Result_Queue.remove((name, station))
-        elif name.startswith('L'):
-            for reg_name, reg in context.floating_point_registers.items():
-                if reg["Qi"] == name:
-                    reg["Value"] = CDB.CDB['value']
-                    reg["Qi"] = "0"
-            print(f"Load buffer {name} has written back and is now free.")
-            Clear_Queue.append((name, station))
-            Result_Queue.remove((name, station))
-        elif name.startswith('A') or name.startswith('M'):
-            for reg_name, reg in context.general_registers.items():
-                if reg["Qi"] == name:
-                    reg["Value"] = CDB.CDB['value']
-                    reg["Qi"] = "0"
-            for reg_name, reg in context.floating_point_registers.items():
-                if reg["Qi"] == name:
-                    reg["Value"] = CDB.CDB['value']
-                    reg["Qi"] = "0"
-            print(f"Reservation station {name} has written back and is now free.")
+            if HAS_GUI and 'inst_index' in station:
+                gui.update_instruction_writeback(station['inst_index'], context.clock_cycle)
             Clear_Queue.append((name, station))
             Result_Queue.remove((name, station))

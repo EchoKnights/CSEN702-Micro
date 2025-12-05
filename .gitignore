@@ -5,3 +5,7 @@ env/
 venv/
 .idea/
 .vscode/
+*.pdf
+*.png
+*.jpg
+*.bmp

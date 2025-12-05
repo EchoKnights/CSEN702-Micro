@@ -1,14 +1,3 @@
-# gui.py
-#
-# PySide6 GUI for your Tomasulo simulator.
-# It uses the existing modules: context, cycles, fetch, execute, CDB, cache.
-#
-# To run:
-#   pip install PySide6
-#   python gui.py
-#
-# Make sure this file is in the same directory as context.py, cycles.py, etc.
-
 import sys
 import os
 from PySide6.QtWidgets import (
@@ -61,12 +50,27 @@ def reset_instruction_stats():
         })
 
 
-# You can later add small hooks in fetch/cycles to update these fields, e.g.:
-# - when an instruction is issued to a station -> set "issue"
-# - when it first enters Execute_Queue -> set "exec_start"
-# - when it leaves Execute_Queue -> set "exec_end"
-# - when it writes back -> set "writeback"
-# For now, they remain None and are displayed as "-".
+def update_instruction_stat(inst_index, field, value):
+    """Update a specific field for an instruction stat."""
+    global instruction_stats
+    if 0 <= inst_index < len(instruction_stats):
+        instruction_stats[inst_index][field] = value
+
+def update_instruction_issue(inst_index, cycle):
+    """Called when instruction is issued to a reservation station."""
+    update_instruction_stat(inst_index, "issue", cycle)
+
+def update_instruction_exec_start(inst_index, cycle):
+    """Called when instruction starts executing."""
+    update_instruction_stat(inst_index, "exec_start", cycle)
+
+def update_instruction_exec_end(inst_index, cycle):
+    """Called when instruction finishes executing."""
+    update_instruction_stat(inst_index, "exec_end", cycle)
+
+def update_instruction_writeback(inst_index, cycle):
+    """Called when instruction writes back."""
+    update_instruction_stat(inst_index, "writeback", cycle)
 
 
 # ---------------------------
@@ -287,14 +291,7 @@ class MainWindow(QMainWindow):
         ])
         self.tbl_instructions.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_instructions.horizontalHeader().setStretchLastSection(True)
-
-
-        # Small note
-        lbl_note = QLabel(
-            "Note: Issue/Exec/Writeback columns require small hooks in backend to fill accurately."
-        )
-        lbl_note.setStyleSheet("color: gray; font-size: 10pt;")
-        layout.addWidget(lbl_note)
+        layout.addWidget(self.tbl_instructions)
 
         return widget
 
@@ -635,13 +632,22 @@ class MainWindow(QMainWindow):
             tag = line.get("tag")
             data = line.get("data")
 
-            # data might be list of bytes (strings); join them a bit
+            # data is now a list of byte strings (8-bit binary strings)
             if isinstance(data, list):
-                data_str = ", ".join(str(x) for x in data)
-            else:
+                if len(data) > 0:
+                    # Show first few bytes, or all if small
+                    if len(data) <= 8:
+                        data_str = ", ".join(data)
+                    else:
+                        data_str = ", ".join(data[:8]) + f" ... ({len(data)} bytes total)"
+                else:
+                    data_str = "(empty)"
+            elif data:
                 data_str = str(data)
+            else:
+                data_str = "(empty)"
 
-            vals = [set_id, valid, tag, data_str]
+            vals = [set_id, valid, tag if tag else "-", data_str]
             for col, v in enumerate(vals):
                 self.tbl_cache.setItem(row, col, QTableWidgetItem(str(v)))
         self.tbl_cache.resizeColumnsToContents()
