@@ -67,6 +67,15 @@ load_latency = 2
 store_latency = 2
 add_latency = 1
 
+g = 32
+f= 32
+a=3
+fa=3
+m=2
+fm=2
+l=3
+s=3
+
 instruction_memory = []
 data_memory = []
 cache = {}

@@ -41,11 +41,11 @@ while True:
     input("Press Enter to proceed to the next cycle...")
     cycles.increment_cycle()
 
-    cycles.writeback_cycle()
+    cycles.cycle_writeback()
 
-    cycles.execute_cycle()
+    cycles.cycle_execute()
 
-    cycles.fetch_cycle()
+    cycles.cycle_fetch()
 
     cycles.print_state()
 

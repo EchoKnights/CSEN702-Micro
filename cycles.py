@@ -49,7 +49,7 @@ def increment_cycle():
     print('\n')
     
     
-def fetch_cycle_helper():
+def cycle_fetch_helper():
     instruction = fetch.get_current_instruction()
     if instruction:
         print(f"Fetched instruction: {instruction}")
@@ -61,12 +61,12 @@ def fetch_cycle_helper():
         print("No more instructions to fetch.")
         return None
     
-def fetch_cycle():
+def cycle_fetch():
     print('Start of Fetch Cycle')
     print('\n')
     print(f'PC at start of fetch: {context.pc}')
 
-    instruction = fetch_cycle_helper()
+    instruction = cycle_fetch_helper()
     if instruction is not None:
         decoded_instruction = fetch.decode_instruction(instruction)
         print(f"Decoded instruction: {decoded_instruction}")
@@ -164,7 +164,7 @@ def fetch_cycle():
     print(Clear_Queue)
     print('\n')
     
-def execute_cycle():
+def cycle_execute():
     for name, station in list(Ready_Queue):
         Execute_Queue.append((name, station))
         Ready_Queue.remove((name, station))
@@ -282,7 +282,7 @@ def execute_cycle():
     print('End of Execute Cycle')
         
     
-def writeback_cycle():
+def cycle_writeback():
     if Clear_Queue:
         for name, station in Clear_Queue:
             station["busy"] = 0

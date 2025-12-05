@@ -133,7 +133,7 @@ class MainWindow(QMainWindow):
         file_layout.addWidget(self.instr_path_edit, stretch=1)
         file_layout.addWidget(btn_browse)
         layout.addLayout(file_layout, 0, 0, 1, 2)
-
+        
         # Middle: latencies
         lat_group = QGroupBox("Latencies (cycles)")
         lat_form = QFormLayout(lat_group)
@@ -172,7 +172,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(lat_group, 1, 0)
 
         # Right: cache / memory
-        cache_group = QGroupBox("Cache / Memory")
+        cache_group = QGroupBox("Stations / Cache / Memory")
         cache_form = QFormLayout(cache_group)
 
         self.sp_data_mem_size = QSpinBox()
@@ -194,6 +194,45 @@ class MainWindow(QMainWindow):
         self.sp_cache_miss = QSpinBox()
         self.sp_cache_miss.setRange(1, 1000)
         self.sp_cache_miss.setValue(context.cache_miss_penalty)
+        
+        self.sp_general_registers = QSpinBox()
+        self.sp_general_registers.setRange(1, 100)
+        self.sp_general_registers.setValue(context.g)
+        
+        self.sp_floating_point_registers = QSpinBox()
+        self.sp_floating_point_registers.setRange(1, 100)
+        self.sp_floating_point_registers.setValue(context.f)
+        
+        self.sp_load_buffers = QSpinBox()
+        self.sp_load_buffers.setRange(1, 100)
+        self.sp_load_buffers.setValue(context.l)
+        
+        self.sp_store_buffers = QSpinBox()
+        self.sp_store_buffers.setRange(1, 100)
+        self.sp_store_buffers.setValue(context.s)
+        
+        self.sp_adder_stations = QSpinBox()
+        self.sp_adder_stations.setRange(1, 100)
+        self.sp_adder_stations.setValue(context.a)
+        
+        self.sp_mult_stations = QSpinBox()
+        self.sp_mult_stations.setRange(1, 100)
+        self.sp_mult_stations.setValue(context.m)
+        
+        self.sp_fp_adder_stations = QSpinBox()
+        self.sp_fp_adder_stations.setRange(1, 100)
+        self.sp_fp_adder_stations.setValue(context.fa)
+        
+        self.sp_fp_mult_stations = QSpinBox()
+        self.sp_fp_mult_stations.setRange(1, 100)
+        self.sp_fp_mult_stations.setValue(context.fm)
+        
+        cache_form.addRow("Load buffers", self.sp_load_buffers)
+        cache_form.addRow("Store buffers", self.sp_store_buffers)
+        cache_form.addRow("Adder stations", self.sp_adder_stations)
+        cache_form.addRow("Multiplier stations", self.sp_mult_stations)
+        cache_form.addRow("FP Adder stations", self.sp_fp_adder_stations)
+        cache_form.addRow("FP Multiplier stations", self.sp_fp_mult_stations)
 
         cache_form.addRow("Data memory size (bytes)", self.sp_data_mem_size)
         cache_form.addRow("Cache size (bytes)", self.sp_cache_size)
@@ -469,7 +508,16 @@ class MainWindow(QMainWindow):
         )
         context.initialize_clock_cycle()
         context.initialize_program_counter()
-        context.initialize_reservation_stations()
+        context.initialize_reservation_stations(
+            g = self.sp_general_registers.value(),
+            f = self.sp_floating_point_registers.value(),
+            a = self.sp_adder_stations.value(),
+            fa = self.sp_fp_adder_stations.value(),
+            m = self.sp_mult_stations.value(),
+            fm = self.sp_fp_mult_stations.value(),
+            l = self.sp_load_buffers.value(),
+            s = self.sp_store_buffers.value(),
+        )
 
         # Clear queues & CDB
         cycles.TBE_Queue.clear()
@@ -499,9 +547,9 @@ class MainWindow(QMainWindow):
 
         # One full cycle: increment cycle, then WB, EX, Fetch (same order as simulator.py). 
         cycles.increment_cycle()
-        cycles.writeback_cycle()
-        cycles.execute_cycle()
-        cycles.fetch_cycle()
+        cycles.cycle_writeback()
+        cycles.cycle_execute()
+        cycles.cycle_fetch()
 
         # (Optional) here is a good place to later update instruction_stats
         # if you add hooks into cycles/writeback.
